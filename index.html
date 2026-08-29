@@ -195,6 +195,20 @@
   }
   .formula-block .fx { overflow-x: auto; padding: 10px 0; font-size: 15px; }
   .formula-block p { font-size: 12.5px; color: var(--ink-secondary); margin: 2px 0 0; }
+
+  .toggle-pills { display: inline-flex; background: var(--accent-light); border-radius: 20px; padding: 3px; margin-bottom: 20px; }
+  .toggle-pills button {
+    border: none; background: transparent; padding: 8px 18px; border-radius: 16px;
+    font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-secondary); cursor: pointer;
+  }
+  .toggle-pills button.active { background: var(--accent); color: #fff; }
+
+  .glos-card { display: flex; gap: 12px; padding: 14px 2px; border-bottom: 1px solid var(--border); }
+  .glos-card:last-child { border-bottom: none; }
+  .glos-icon { font-size: 20px; flex-shrink: 0; width: 28px; text-align: center; }
+  .glos-title { font-weight: 700; font-size: 13.5px; margin-bottom: 2px; }
+  .glos-body { font-size: 12.5px; color: var(--ink-secondary); line-height: 1.55; }
+  .glos-body b { color: var(--ink); }
 </style>
 </head>
 <body>
@@ -318,29 +332,17 @@ function panelHTML(inner) {
 function buildUI() {
   document.getElementById("main").innerHTML = `
     <div class="mode-selector">
-      <button class="mode-card active" data-mode="problem">
-        <span class="emoji">🌍</span><h3>The problem</h3>
-        <p>Why this question matters, in the real world</p>
+      <button class="mode-card active" data-mode="overview">
+        <span class="emoji">🔎</span><h3>Overview</h3>
+        <p>The problem, the findings, the recommendation</p>
       </button>
-      <button class="mode-card" data-mode="big">
-        <span class="emoji">🔎</span><h3>What matters most?</h3>
-        <p>Which factors actually move the needle</p>
-      </button>
-      <button class="mode-card" data-mode="predict">
+      <button class="mode-card" data-mode="tryit">
         <span class="emoji">🎚️</span><h3>Try it yourself</h3>
-        <p>Drag sliders, watch the prediction change</p>
+        <p>Sliders + a 3D surface, live</p>
       </button>
-      <button class="mode-card" data-mode="explore">
-        <span class="emoji">🌐</span><h3>See it in 3D</h3>
-        <p>Rotate the model like a landscape</p>
-      </button>
-      <button class="mode-card" data-mode="recommend">
-        <span class="emoji">🎯</span><h3>Recommendations</h3>
-        <p>What the data suggests we prioritize</p>
-      </button>
-      <button class="mode-card" data-mode="formulas">
+      <button class="mode-card" data-mode="math">
         <span class="emoji">📐</span><h3>The math</h3>
-        <p>Every formula behind every chart above</p>
+        <p>What r, p, and multiple regression mean here</p>
       </button>
     </div>
     <div id="panelHost"></div>`;
@@ -351,7 +353,7 @@ function buildUI() {
       RENDERERS[card.dataset.mode]();
     });
   });
-  renderProblem();
+  renderOverview();
 }
 
 // ---------- shared stats ----------
@@ -369,29 +371,7 @@ function simpleLinReg(xs, ys) {
   const m = sxy/sxx; return { m, b: my-m*mx };
 }
 
-// ---------- THE PROBLEM ----------
-function renderProblem() {
-  panelHTML(`
-    <h2>Why we're asking this question</h2>
-    <p class="desc">Suicide is a real, large-scale public health problem — and mental health budgets are limited. This project asks where that money actually seems to matter.</p>
-
-    <div class="stat-row">
-      <div class="stat-tile"><div class="n">700,000+</div><div class="l">people die by suicide every year, worldwide (WHO)</div></div>
-      <div class="stat-tile"><div class="n">${MODEL.nObservations}</div><div class="l">real country-year records behind this model</div></div>
-      <div class="stat-tile"><div class="n">${PREDICTORS.length}</div><div class="l">mental-health & lifestyle factors compared at once</div></div>
-    </div>
-
-    <ul class="problem-list">
-      <li><span class="tag">THE PROBLEM</span> <span>Suicide is one of the leading causes of death among young people worldwide — yet health budgets are finite, and governments have to choose where mental health money goes: more psychiatrists? More hospital units? Broader health spending?</span></li>
-      <li><span class="tag">WHY IT'S HARD</span> <span>You can't run a controlled experiment on entire countries. Spending, alcohol use, and healthcare capacity all move together — so a simple "spending went up, suicide rate went down" comparison can be misleading.</span></li>
-      <li><span class="tag">OUR APPROACH</span> <span>We use <b>multiple regression</b> on real WHO / World Bank data to isolate each factor's own association with suicide rate — statistically holding the others constant.</span></li>
-    </ul>
-
-    <div class="callout"><strong>What we're solving for:</strong> which of the five factors show the strongest, most reliable link to suicide rate — so we can turn that into a concrete, data-backed recommendation. See <b>"What matters most?"</b> for the analysis and <b>"Recommendations"</b> for the takeaway.</div>
-  `);
-}
-
-// ---------- BIG PICTURE (hero view) ----------
+// ---------- OVERVIEW (problem + findings + recommendation, one screen) ----------
 function drawCoefChart(containerId, animate) {
   const rows = PREDICTORS.map(k => {
     const xs = COUNTRY_DATA.map(d => d[k]);
@@ -446,31 +426,33 @@ function drawMiniScatter(containerId, key) {
   return r;
 }
 
-function renderBigPicture() {
+function renderOverview() {
   const stdBeta = k => MODEL.coefficients[k] * (stdDev(COUNTRY_DATA.map(d=>d[k])) / stdDev(COUNTRY_DATA.map(d=>d.suicide_rate)));
-  const strongest = [...PREDICTORS].sort((a,b) => Math.abs(stdBeta(b)) - Math.abs(stdBeta(a)))[0];
-  const dir = stdBeta(strongest) < 0
-    ? `<span class="arrow-lower">lower</span> ↓`
-    : `<span class="arrow-higher">higher</span> ↑`;
+  const rows = PREDICTORS.map(k => ({ key: k, betaStd: stdBeta(k), p: MODEL.pValues[k] })).sort((a,b) => Math.abs(b.betaStd) - Math.abs(a.betaStd));
+  const strongest = rows[0];
+  const dir = strongest.betaStd < 0 ? `<span class="arrow-lower">lower</span> ↓` : `<span class="arrow-higher">higher</span> ↑`;
 
   panelHTML(`
-    <h2>Which factors actually matter?</h2>
-    <p class="desc">Every bar below comes from the same equation — five factors compared side by side.</p>
-
-    <div class="headline">
-      🔑 <strong>${LABELS[strongest]}</strong> has the strongest link — more of it means a ${dir} predicted suicide rate.
+    <h2>Does mental health spending lower suicide rates?</h2>
+    <p class="desc">Suicide rate and each factor are continuous numbers, not categories — so we used <b>multiple regression</b> to quantify all ${PREDICTORS.length} at once, instead of guessing from one factor at a time.</p>
+    <div class="stat-row">
+      <div class="stat-tile"><div class="n">700,000+</div><div class="l">suicides/year worldwide (WHO)</div></div>
+      <div class="stat-tile"><div class="n">${MODEL.nObservations}</div><div class="l">country-years in this model</div></div>
+      <div class="stat-tile"><div class="n">${(MODEL.rSquared*100).toFixed(0)}%</div><div class="l">of the pattern this model explains</div></div>
     </div>
+
+    <div class="headline">🔑 <strong>${LABELS[strongest.key]}</strong> has the strongest link — more of it means a ${dir} predicted rate.</div>
 
     <div id="coefChart"></div>
     <div class="axis-key">
-      <span><b>Bars pointing left (green)</b> = linked to a lower rate</span>
-      <span><b>Bars pointing right (red)</b> = linked to a higher rate</span>
+      <span><b>Green</b> = linked to lower rate</span>
+      <span><b>Red</b> = linked to higher rate</span>
       <span><b>Longer bar</b> = bigger effect</span>
     </div>
 
-    <h3 style="font-size:14px;color:var(--ink-secondary);font-weight:600;margin:30px 0 4px;">See the raw data behind each bar</h3>
-    <p class="chart-caption" style="margin-bottom:10px;">On every mini chart: <b>x-axis</b> = the factor's value &nbsp;·&nbsp; <b>y-axis</b> = suicide rate &nbsp;·&nbsp; each dot = one country, one year</p>
-    <div class="mini-grid" id="miniGrid"></div>
+    <div class="mini-grid" id="miniGrid" style="margin-top:24px;"></div>
+
+    <div class="callout" style="margin-top:22px;"><strong>Bottom line:</strong> ${strongest.p < 0.05 ? `${LABELS[strongest.key]} is the strongest, statistically significant lever we found` : "no single factor is statistically decisive here"} — but this is <em>association</em> from cross-country data, not proof of cause.</div>
   `);
 
   drawCoefChart("coefChart", true);
@@ -479,22 +461,46 @@ function renderBigPicture() {
   grid.innerHTML = PREDICTORS.map((k,i) => `
     <div class="mini-card">
       <div class="mini-title">${LABELS[k]}</div>
-      <div id="mini-${i}" style="height:140px;"></div>
+      <div id="mini-${i}" style="height:130px;"></div>
       <div class="mini-corr" id="mini-corr-${i}"></div>
     </div>`).join("");
   PREDICTORS.forEach((k,i) => {
     const r = drawMiniScatter(`mini-${i}`, k);
-    const strength = Math.abs(r) > 0.4 ? "strong pattern" : Math.abs(r) > 0.2 ? "moderate pattern" : "weak pattern";
-    document.getElementById(`mini-corr-${i}`).textContent = `${strength} (r = ${r.toFixed(2)})`;
+    document.getElementById(`mini-corr-${i}`).textContent = `r = ${r.toFixed(2)}`;
   });
 }
 
-// ---------- PREDICT ----------
-function renderPredict() {
-  const values = defaultValues();
+// ---------- TRY IT (sliders + 3D, toggled) ----------
+function renderTryIt() {
   panelHTML(`
-    <h2>Build a country's profile</h2>
-    <p class="desc">Move any slider — the number and the gauge below update live, calculated from the real equation.</p>
+    <h2>Try the model yourself</h2>
+    <div class="toggle-pills">
+      <button id="tabSliders" class="active">Sliders</button>
+      <button id="tab3d">3D surface</button>
+    </div>
+    <div id="viewSliders"></div>
+    <div id="view3d" style="display:none;"></div>
+  `);
+  document.getElementById("tabSliders").addEventListener("click", () => {
+    document.getElementById("tabSliders").classList.add("active");
+    document.getElementById("tab3d").classList.remove("active");
+    document.getElementById("viewSliders").style.display = "block";
+    document.getElementById("view3d").style.display = "none";
+  });
+  document.getElementById("tab3d").addEventListener("click", () => {
+    document.getElementById("tab3d").classList.add("active");
+    document.getElementById("tabSliders").classList.remove("active");
+    document.getElementById("view3d").style.display = "block";
+    document.getElementById("viewSliders").style.display = "none";
+    draw3D(true);
+  });
+  renderSliders();
+  renderExplore3D();
+}
+
+function renderSliders() {
+  const values = defaultValues();
+  document.getElementById("viewSliders").innerHTML = `
     ${PREDICTORS.map((k,i) => sliderRow(k, "p"+i, values[k])).join("")}
     <div class="readout" id="readout">
       <div class="label">Predicted suicide rate</div>
@@ -502,13 +508,11 @@ function renderPredict() {
       <div class="unit">per 100,000 people</div>
       <div class="gauge-track"><div class="gauge-marker" id="gaugeMarker" style="left:0%"></div></div>
       <div class="gauge-labels"><span>Lowest seen worldwide</span><span>Highest seen worldwide</span></div>
-    </div>
-  `);
+    </div>`;
   let current = predict(values);
   document.getElementById("predictValue").textContent = current.toFixed(1);
   function gaugePct(v) { return Math.max(0, Math.min(100, ((v - SUICIDE_MIN) / (SUICIDE_MAX - SUICIDE_MIN)) * 100)); }
   document.getElementById("gaugeMarker").style.left = gaugePct(current) + "%";
-
   function update() {
     PREDICTORS.forEach((k,i) => {
       values[k] = parseFloat(document.getElementById("p"+i).value);
@@ -525,18 +529,15 @@ function renderPredict() {
   PREDICTORS.forEach((k,i) => document.getElementById("p"+i).addEventListener("input", update));
 }
 
-// ---------- EXPLORE (3D only) ----------
-function renderExplore() {
-  panelHTML(`
-    <h2>Two factors, one landscape</h2>
-    <p class="desc">Pick two factors below. The <b>height</b> of the surface is the predicted suicide rate — everything else is held at its worldwide average.</p>
+let draw3D;
+function renderExplore3D() {
+  document.getElementById("view3d").innerHTML = `
     <div class="axis-row">
-      <div><label style="font-size:12.5px;font-weight:600;">Factor on the X axis (left-right)</label><select id="xAxis"></select></div>
-      <div><label style="font-size:12.5px;font-weight:600;">Factor on the Y axis (front-back)</label><select id="yAxis"></select></div>
+      <div><label style="font-size:12.5px;font-weight:600;">X axis</label><select id="xAxis"></select></div>
+      <div><label style="font-size:12.5px;font-weight:600;">Y axis</label><select id="yAxis"></select></div>
     </div>
     <div id="plotly3d" style="height:420px;"></div>
-    <p class="chart-caption">🟡 Gold dots = real countries &nbsp;·&nbsp; taller/greener = higher predicted rate &nbsp;·&nbsp; <b>drag to rotate, scroll to zoom</b></p>
-  `);
+    <p class="chart-caption">🟡 Gold dots = real countries &nbsp;·&nbsp; height = predicted rate &nbsp;·&nbsp; <b>drag to rotate</b></p>`;
 
   PREDICTORS.forEach(k => {
     document.getElementById("xAxis").innerHTML += `<option value="${k}">${LABELS[k]}</option>`;
@@ -546,7 +547,7 @@ function renderExplore() {
 
   let spinAngle = 1.5, spinTimer = null;
 
-  function draw3D(withSpin) {
+  draw3D = function(withSpin) {
     const xk = document.getElementById("xAxis").value;
     const yk = document.getElementById("yAxis").value;
     if (xk === yk) return;
@@ -594,142 +595,61 @@ function renderExplore() {
 
   document.getElementById("xAxis").addEventListener("change", () => draw3D(false));
   document.getElementById("yAxis").addEventListener("change", () => draw3D(false));
-  draw3D(true); // gentle auto-rotate on open, then settle — draws the eye in
 }
 
-// ---------- RECOMMENDATIONS ----------
-function renderRecommend() {
-  const rows = PREDICTORS.map(k => {
-    const xs = COUNTRY_DATA.map(d => d[k]);
-    const ys = COUNTRY_DATA.map(d => d.suicide_rate);
-    const betaStd = MODEL.coefficients[k] * (stdDev(xs) / stdDev(ys));
-    return { key: k, label: LABELS[k], betaStd, raw: MODEL.coefficients[k], p: MODEL.pValues[k] };
-  }).sort((a,b) => Math.abs(b.betaStd) - Math.abs(a.betaStd));
-
-  const cards = rows.map((r,i) => {
-    const isRisk = r.betaStd > 0;
-    const sig = r.p < 0.05;
-    const verb = isRisk ? "Manage / monitor" : "Invest in";
-    const word = isRisk ? "higher" : "lower";
-    return `
-      <div class="rec-card ${isRisk ? "risk" : ""}">
-        <div class="rec-num">${i+1}</div>
-        <div>
-          <div class="rec-title">${verb} ${r.label}</div>
-          <div class="rec-body">Every 1 SD increase is linked to a <b>${Math.abs(r.betaStd).toFixed(2)} SD ${word}</b> predicted suicide rate, holding the other ${PREDICTORS.length-1} factors fixed.</div>
-          <span class="rec-badge ${sig ? "sig" : "nsig"}">${sig ? "BACKED BY THE DATA (p<0.05)" : "NEEDS MORE DATA"}</span>
-        </div>
-      </div>`;
-  }).join("");
-
-  const topSig = rows.find(r => r.p < 0.05);
-
-  panelHTML(`
-    <h2>What the data suggests we prioritize</h2>
-    <p class="desc">Ranked by effect size — the biggest, most reliable levers first.</p>
-    ${topSig ? `<div class="headline">🎯 If we had to pick <u>one</u> policy lever: <strong>${topSig.label}</strong> — the strongest link to suicide rate in this dataset, and statistically significant.</div>` : ""}
-    ${cards}
-    <div class="callout warn" style="margin-top:22px;"><strong>Read this before quoting a number:</strong> these are statistical associations from cross-country data — not proof that changing one factor <em>causes</em> suicide rate to change. Real policy needs controlled or longitudinal studies on top of this. Treat this model as a hypothesis-generator, not a final answer.</div>
-  `);
-}
-
-// ---------- FORMULAS ----------
-function sigStars(p) { if (p < 0.01) return "***"; if (p < 0.05) return "**"; if (p < 0.1) return "*"; return ""; }
-const WHY = {
-  psychiatrists_per_100k:  "treatment access — more specialists, more people reached",
-  mh_units_gen_hospitals:  "care infrastructure — how easy intervention is",
-  govt_mh_expenditure_pct: "the policy lever this project is actually testing",
-  govt_health_exp_pct_gdp: "overall healthcare capacity — a control variable",
-  alcohol_consumption_L:   "known risk factor — included as a control",
-};
-function renderFormulas() {
-  const coefRows = PREDICTORS.map((k, i) => {
-    const b = MODEL.coefficients[k], p = MODEL.pValues[k];
-    return `<tr><td>X<sub>${i+1}</sub> — ${LABELS[k]}</td><td>${b >= 0 ? "+" : ""}${b.toFixed(4)}</td><td>${p.toFixed(4)} ${sigStars(p)}</td></tr>`;
-  }).join("");
+// ---------- THE MATH ----------
+function renderMath() {
   const fittedTerms = PREDICTORS.map((k, i) => {
     const b = MODEL.coefficients[k];
     return `${b >= 0 ? "+" : "-"} ${Math.abs(b).toFixed(3)}\\,X_${i+1}`;
   }).join(" \\; ");
-  const varRows = PREDICTORS.map((k, i) => {
-    const r = pearsonR(COUNTRY_DATA.map(d => d[k]), COUNTRY_DATA.map(d => d.suicide_rate));
-    return `<tr><td>X<sub>${i+1}</sub> — ${LABELS[k]}</td><td>${WHY[k] || "predictor"}</td><td>${r >= 0 ? "+" : ""}${r.toFixed(2)}</td></tr>`;
-  }).join("");
+  const pct = (MODEL.rSquared*100).toFixed(1);
 
   panelHTML(`
-    <h2>Every formula behind every chart</h2>
-    <p class="desc">What connects to what, how each number is calculated in general, and how we calculate it here.</p>
+    <h2>The math, briefly</h2>
+    <div class="fx" style="font-size:14px;overflow-x:auto;">$$\\hat{y} = ${MODEL.intercept.toFixed(3)} \\; ${fittedTerms}$$</div>
+    <p class="chart-caption" style="margin:-8px 0 18px;">This runs live behind every chart · R² = ${pct}% · n = ${MODEL.nObservations}</p>
 
-    <div class="formula-block">
-      <h4>0. The variables <span class="used-in">Y = suicide rate · X₁…X₅ = the factors</span></h4>
-      <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        <thead><tr style="text-align:left;border-bottom:1px solid var(--border);"><th style="padding:8px 6px;">Variable</th><th style="padding:8px 6px;">Why it's in the model</th><th style="padding:8px 6px;">r with Y</th></tr></thead>
-        <tbody>${varRows}</tbody>
-      </table>
+    <div class="glos-card">
+      <div class="glos-icon">🧮</div>
+      <div><div class="glos-title">Why regression fits this problem</div>
+      <div class="glos-body">Suicide rate is a <b>continuous number</b> (not a category), driven by <b>continuous factors</b> — spending %, headcounts, litres. Regression is built exactly for "how does a continuous outcome move with continuous inputs," so it's the natural fit here.</div></div>
     </div>
-
-    <div class="callout"><strong>Why multiple, not simple, regression.</strong> Factors here move together — countries that spend more on mental health often also have more psychiatrists. Fit them one at a time (simple regression, §2) and one factor wrongly takes credit for another's effect. Multiple regression (§3) fits all ${PREDICTORS.length} X's in <em>one</em> equation, so each coefficient is that factor's effect <em>alone</em>, others held fixed — that's the actual model behind every prediction on this page.</div>
-
-    <div class="formula-block">
-      <h4>1. Correlation (r) — general <span class="used-in">here: the "r =" on each mini scatter</span></h4>
-      <div class="fx">$$r = \\frac{\\sum (x_i-\\bar{x})(y_i-\\bar{y})}{\\sqrt{\\sum (x_i-\\bar{x})^2 \\sum (y_i-\\bar{y})^2}}$$</div>
-      <p>−1 to +1. How strongly one X, alone, tracks with Y. Table above = this formula run once per X.</p>
+    <div class="glos-card">
+      <div class="glos-icon">🔗</div>
+      <div><div class="glos-title">Multiple linear regression — why we use it</div>
+      <div class="glos-body">One equation, all ${PREDICTORS.length} factors together, each holding the others fixed. <b>This is the model</b> generating every prediction on this page.</div></div>
     </div>
-
-    <div class="formula-block">
-      <h4>2. Simple linear regression — general <span class="used-in">here: trend line on each mini scatter, one X at a time</span></h4>
-      <div class="fx">$$\\hat{y} = mx + b, \\quad m = \\frac{\\sum(x_i-\\bar{x})(y_i-\\bar{y})}{\\sum(x_i-\\bar{x})^2}, \\quad b = \\bar{y} - m\\bar{x}$$</div>
-      <p>Best-fit line for one X, ignoring the rest. Exploratory only — not the model.</p>
+    <div class="glos-card">
+      <div class="glos-icon">⚖️</div>
+      <div><div class="glos-title">Why not simple regression</div>
+      <div class="glos-body">Simple regression uses one factor at a time — but our factors move together (more spending often means more psychiatrists too), so it would wrongly credit one factor for another's effect.</div></div>
     </div>
-
-    <div class="formula-block">
-      <h4>3. Multiple linear regression — general <span class="used-in">here: the actual model, all charts</span></h4>
-      <div class="fx">$$Y = \\beta_0 + \\beta_1 X_1 + \\beta_2 X_2 + \\beta_3 X_3 + \\beta_4 X_4 + \\beta_5 X_5 + \\varepsilon$$</div>
-      <div class="fx" style="font-size:14px;">$$\\hat{y} = ${MODEL.intercept.toFixed(3)} \\; ${fittedTerms}$$</div>
-      <p>All X's at once, each holding the others fixed. Second line = our fitted equation, live — what "Try it yourself" and "See it in 3D" actually run.</p>
+    <div class="glos-card">
+      <div class="glos-icon">📈</div>
+      <div><div class="glos-title">Correlation (r)</div>
+      <div class="glos-body">$$r = \\frac{\\sum (x_i-\\bar{x})(y_i-\\bar{y})}{\\sqrt{\\sum (x_i-\\bar{x})^2 \\sum (y_i-\\bar{y})^2}}$$ −1 to +1: how strongly one factor, alone, tracks with suicide rate. Shown as "r =" under each Overview chart.</div></div>
     </div>
-
-    <div class="formula-block">
-      <h4>4. OLS estimation — how β is found <span class="used-in">here: statsmodels fits this once, on startup</span></h4>
-      <div class="fx">$$\\hat{\\beta} = (X^{\\top}X)^{-1}X^{\\top}y$$</div>
-      <p>Solves for the β's that minimize total squared prediction error across all ${MODEL.nObservations} rows.</p>
+    <div class="glos-card">
+      <div class="glos-icon">🎯</div>
+      <div><div class="glos-title">p-value & the 5% threshold</div>
+      <div class="glos-body">The chance a coefficient is pure noise. We treat a factor as a real effect when <b>p &lt; 0.05</b> — under 5% odds it's noise. Standard cutoff in statistics.</div></div>
     </div>
-
-    <div class="formula-block">
-      <h4>5. Standardized coefficient <span class="used-in">here: the bar chart on "What matters most?"</span></h4>
-      <div class="fx">$$\\beta_i^{std} = \\beta_i \\times \\frac{s_{X_i}}{s_{Y}}$$</div>
-      <p>Raw β's aren't comparable across different units. This rescales them so bar length = fair comparison.</p>
+    <div class="glos-card">
+      <div class="glos-icon">📊</div>
+      <div><div class="glos-title">R² — how much is "good"</div>
+      <div class="glos-body">% of the pattern the model explains. Ours: <b>${pct}%</b>. For cross-country social data, 10–30% is normal and useful — 100% never happens, since culture, genetics, and other unmeasured causes fill the rest.</div></div>
     </div>
-
-    <div class="formula-block">
-      <h4>6. Goodness of fit, as a % <span class="used-in">here: R² in the status bar</span></h4>
-      <div class="fx">$$R^2 = 1 - \\frac{SSE}{SST} \\qquad \\bar{R}^2 = 1-(1-R^2)\\frac{n-1}{n-k-1}$$</div>
-      <p>R² = <b>${MODEL.rSquared.toFixed(4)}</b> (${(MODEL.rSquared*100).toFixed(1)}%) &nbsp;·&nbsp; Adj. R² = <b>${MODEL.adjRSquared.toFixed(4)}</b> &nbsp;·&nbsp; n = <b>${MODEL.nObservations}</b></p>
-      <p>Read as a %: 0% = the 5 factors explain nothing, 100% = perfect fit. Higher % = stronger, more complete relationship. Cross-country social data like this rarely clears 30–50% — suicide has causes (culture, genetics, access to means) no dataset fully captures, so our ${(MODEL.rSquared*100).toFixed(1)}% is the share those causes leave for these 5 factors to explain, not a failing grade.</p>
-    </div>
-
-    <div class="formula-block">
-      <h4>7. p-value per coefficient <span class="used-in">here: the badges in "Recommendations"</span></h4>
-      <div class="fx">$$t = \\frac{\\hat{\\beta}_i}{SE(\\hat{\\beta}_i)}$$</div>
-      <p>t measures the coefficient against its own uncertainty; p = the chance of seeing a t this large if the true effect were zero. Low p ⇒ unlikely to be noise.</p>
-      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:10px;">
-        <thead><tr style="text-align:left;border-bottom:1px solid var(--border);"><th style="padding:8px 6px;">Predictor</th><th style="padding:8px 6px;">Coefficient</th><th style="padding:8px 6px;">p-value</th></tr></thead>
-        <tbody>${coefRows}</tbody>
-      </table>
-      <p style="margin-top:8px;">*** p&lt;0.01 &nbsp; ** p&lt;0.05 &nbsp; * p&lt;0.1</p>
-    </div>
-
-    <div class="formula-block">
-      <h4>8. How this runs, technically <span class="used-in">the actual backend, not a metaphor</span></h4>
-      <p><b>01_pull_who_data.py</b> → downloads WHO/World Bank data → one CSV.
-      <b>app.py</b> reads it, cleans it, fits this exact OLS model with statsmodels <em>once, on server startup</em>, and serves the coefficients as JSON (<code>/api/model</code>, <code>/api/data</code>).
-      This page fetches that JSON on load and computes every chart, r-value, and prediction <em>in your browser</em> — nothing on screen is precomputed or hardcoded.</p>
+    <div class="glos-card">
+      <div class="glos-icon">🔮</div>
+      <div><div class="glos-title">What "prediction" means here</div>
+      <div class="glos-body">One continuous number, not yes/no — the equation solved for whatever values you set. No accept/reject cutoff on a single prediction; R² and p-values judge the <em>model</em>, not each number.</div></div>
     </div>
   `);
   renderMathInElement(document.getElementById("panelHost"), { delimiters: [{left: "$$", right: "$$", display: true}] });
 }
 
-const RENDERERS = { problem: renderProblem, big: renderBigPicture, predict: renderPredict, explore: renderExplore, recommend: renderRecommend, formulas: renderFormulas };
+const RENDERERS = { overview: renderOverview, tryit: renderTryIt, math: renderMath };
 boot();
 </script>
 </body>
