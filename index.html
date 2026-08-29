@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mental health investment & suicide rates — policy simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist@2.35.2/plotly.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<style>
+  :root {
+    --bg: #F3F6F4;
+    --card: #FFFFFF;
+    --ink: #17281D;
+    --ink-secondary: #5C6F63;
+    --ink-faint: #8B9A91;
+    --accent: #1B4332;
+    --accent-light: #E7F0EA;
+    --accent-mid: #2D6A4F;
+    --gold: #B8860B;
+    --border: #DDE6E0;
+    --danger: #7A2E2E;
+    --danger-light: #FBEAEA;
+    --font: 'Poppins', -apple-system, sans-serif;
+    --ease: cubic-bezier(.22,1,.36,1);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: var(--font); background: var(--bg); color: var(--ink);
+    line-height: 1.5; -webkit-font-smoothing: antialiased;
+  }
+  header { padding: 40px 24px 26px; max-width: 920px; margin: 0 auto; }
+  header .eyebrow {
+    font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--accent-mid); margin-bottom: 10px;
+  }
+  header h1 { font-weight: 700; font-size: 30px; margin: 0 0 8px; color: var(--accent); letter-spacing: -.01em; }
+  header p.sub { margin: 0; color: var(--ink-secondary); font-size: 14.5px; max-width: 620px; }
+  #statusBadge {
+    display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; padding: 7px 14px;
+    border-radius: 20px; font-size: 12px; font-weight: 500;
+    background: var(--accent-light); color: var(--accent); border: 1px solid #C7DACD;
+  }
+  #statusBadge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-mid); }
+  @media (prefers-reduced-motion: no-preference) { #statusBadge.live .dot { animation: pulse 2s ease-in-out infinite; } }
+  @keyframes pulse { 0%,100% { opacity: 1; box-shadow: 0 0 0 0 rgba(45,106,79,.4); } 50% { opacity: .7; box-shadow: 0 0 0 4px rgba(45,106,79,0); } }
+
+  main { max-width: 920px; margin: 0 auto; padding: 0 20px 60px; }
+
+  .mode-selector { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
+  @media (max-width: 620px) { .mode-selector { grid-template-columns: 1fr; } }
+  .mode-card {
+    background: var(--card); border: 1.5px solid var(--border); border-radius: 14px;
+    padding: 18px; cursor: pointer; text-align: center; font-family: inherit;
+    transition: transform .25s var(--ease), box-shadow .25s var(--ease), border-color .2s;
+  }
+  .mode-card:hover { transform: translateY(-3px); box-shadow: 0 10px 24px -12px rgba(23,40,29,.18); }
+  .mode-card.active { border-color: var(--accent-mid); background: var(--accent-light); box-shadow: 0 8px 20px -10px rgba(27,67,50,.25); }
+  .mode-card .emoji { font-size: 26px; display: block; margin-bottom: 8px; }
+  .mode-card h3 { margin: 0 0 4px; font-size: 15.5px; font-weight: 600; }
+  .mode-card p { margin: 0; font-size: 12px; color: var(--ink-secondary); }
+
+  .panel { background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 26px; opacity: 0; transform: translateY(10px); }
+  .panel.in { opacity: 1; transform: translateY(0); transition: opacity .4s var(--ease), transform .4s var(--ease); }
+  .panel h2 { font-weight: 700; font-size: 21px; margin: 0 0 6px; color: var(--accent); }
+  .panel .desc { color: var(--ink-secondary); font-size: 13.5px; margin: 0 0 22px; max-width: 560px; }
+
+  .headline {
+    font-size: 19px; font-weight: 600; line-height: 1.4; color: var(--ink);
+    background: var(--accent-light); border-radius: 14px; padding: 18px 20px; margin-bottom: 22px;
+  }
+  .headline .arrow-lower { color: var(--accent); }
+  .headline .arrow-higher { color: var(--danger); }
+
+  .chart-caption {
+    font-size: 11.5px; color: var(--ink-faint); text-align: center; margin: 6px 0 0;
+  }
+  .axis-key { display: flex; justify-content: center; gap: 18px; font-size: 11px; color: var(--ink-secondary); margin-top: 4px; flex-wrap: wrap; }
+  .axis-key b { color: var(--ink); }
+
+  .slider-row { margin-bottom: 20px; }
+  .slider-row label { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; font-weight: 500; margin-bottom: 8px; }
+  .slider-row .val { color: var(--accent-mid); font-weight: 700; font-variant-numeric: tabular-nums; }
+  input[type=range] { -webkit-appearance: none; width: 100%; height: 4px; border-radius: 2px; background: var(--border); outline: none; }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+    background: var(--accent); border: 2px solid #fff; box-shadow: 0 1px 4px rgba(23,40,29,.3);
+    cursor: pointer; transition: transform .15s var(--ease), box-shadow .15s;
+  }
+  input[type=range]:active::-webkit-slider-thumb { transform: scale(1.3); box-shadow: 0 0 0 7px rgba(27,67,50,.15); }
+  input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); border: 2px solid #fff; cursor: pointer; }
+  .range-labels { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--ink-faint); margin-top: 4px; }
+
+  .readout { margin-top: 22px; padding: 24px; background: var(--accent-light); border: 1px solid #C7DACD; border-radius: 16px; text-align: center; transition: box-shadow .3s var(--ease); }
+  .readout.pulse { box-shadow: 0 0 0 5px rgba(27,67,50,.1); }
+  .readout .label { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--accent-mid); margin-bottom: 8px; }
+  .readout .value { font-size: 48px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .readout .unit { font-size: 13px; color: var(--ink-secondary); margin-top: 2px; }
+
+  .gauge-track { position: relative; height: 14px; background: linear-gradient(90deg, #2D6A4F, #E9D27A, #B23A3A); border-radius: 8px; margin-top: 18px; overflow: visible; }
+  .gauge-marker {
+    position: absolute; top: -7px; width: 4px; height: 28px; background: var(--ink);
+    border-radius: 2px; transform: translateX(-50%);
+    transition: left 0.5s var(--ease); box-shadow: 0 0 0 3px #fff;
+  }
+  .gauge-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--ink-faint); margin-top: 10px; }
+
+  select {
+    width: 100%; padding: 11px 14px; border: 1px solid var(--border); border-radius: 10px;
+    font-size: 14px; margin-bottom: 14px; background: #fff; color: var(--ink); font-family: var(--font);
+  }
+  .axis-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 4px; }
+
+  footer { max-width: 920px; margin: 0 auto; padding: 32px 20px 46px; font-size: 11.5px; color: var(--ink-faint); }
+  footer .source { border-top: 1px solid var(--border); padding-top: 14px; margin-top: 8px; }
+  footer a { color: var(--accent-mid); font-weight: 600; text-decoration: none; cursor: pointer; }
+  footer a:hover { text-decoration: underline; }
+
+  .error-box { max-width: 920px; margin: 60px auto; padding: 28px; text-align: left; background: var(--danger-light); color: var(--danger); border-radius: 14px; }
+  .error-box code { display: block; margin-top: 10px; font-size: 13px; background: rgba(122,46,46,.08); padding: 10px 14px; border-radius: 8px; }
+
+  .loader-wrap { max-width: 480px; margin: 70px auto; text-align: center; }
+  .loader-ring { width: 46px; height: 46px; margin: 0 auto 28px; border: 3px solid var(--border); border-top-color: var(--accent-mid); border-radius: 50%; }
+  @media (prefers-reduced-motion: no-preference) { .loader-ring { animation: spin 0.9s linear infinite; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loader-steps { text-align: left; display: inline-block; }
+  .loader-step { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--ink-faint); padding: 8px 0; opacity: 0.35; transition: opacity .3s var(--ease); }
+  .loader-step.active { opacity: 1; color: var(--ink-secondary); }
+  .loader-step.done { opacity: 1; color: var(--accent); }
+  .loader-step .tick { width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0; border: 1.5px solid var(--border); position: relative; transition: border-color .25s var(--ease), background .25s var(--ease); }
+  .loader-step.active .tick { border-color: var(--accent-mid); }
+  .loader-step.active .tick::after { content: ""; position: absolute; inset: 4px; border-radius: 50%; background: var(--accent-mid); }
+  @media (prefers-reduced-motion: no-preference) { .loader-step.active .tick::after { animation: dotpulse 1s ease-in-out infinite; } }
+  @keyframes dotpulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+  .loader-step.done .tick { border-color: var(--accent); background: var(--accent); }
+  .loader-step.done .tick::before { content: ""; position: absolute; left: 5px; top: 2px; width: 5px; height: 9px; border-right: 2px solid #fff; border-bottom: 2px solid #fff; transform: rotate(45deg); }
+
+  .mini-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin: 4px 0 8px; }
+  .mini-card { border: 1px solid var(--border); border-radius: 12px; padding: 12px 12px 8px; background: #fff; }
+  .mini-title { font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+  .mini-corr { font-size: 11px; color: var(--ink-faint); margin-top: 2px; text-align: center; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">QM Maths group project</div>
+  <h1>Mental health investment & suicide rates</h1>
+  <p class="sub"><strong>Does spending more on mental health lower suicide rates?</strong> A live model built on real WHO / World Bank data.</p>
+  <div id="statusBadge"><span class="dot"></span><span id="statusText">Connecting…</span></div>
+</header>
+
+<main id="main">
+  <div class="loader-wrap" id="loaderWrap">
+    <div class="loader-ring"></div>
+    <div class="loader-steps">
+      <div class="loader-step" data-i="0"><span class="tick"></span> Reading the data file</div>
+      <div class="loader-step" data-i="1"><span class="tick"></span> Cleaning missing values</div>
+      <div class="loader-step" data-i="2"><span class="tick"></span> Fitting the regression</div>
+      <div class="loader-step" data-i="3"><span class="tick"></span> Ready</div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <p><strong>Association, not proof of cause.</strong> A coursework tool, not a diagnostic one.</p>
+  <p class="source">Built from real WHO data. Nothing on this page is precomputed — it's calculated live. <a id="showMathLink">View the math →</a></p>
+</footer>
+
+<script>
+let MODEL = null;
+let COUNTRY_DATA = null;
+let PREDICTORS = [];
+let SUICIDE_MIN = 0, SUICIDE_MAX = 40;
+const LABELS = {
+  psychiatrists_per_100k:  "Psychiatrists per 100,000 people",
+  mh_units_gen_hospitals:  "Mental health units in hospitals",
+  govt_mh_expenditure_pct: "Govt. mental health spending (%)",
+  govt_health_exp_pct_gdp: "Govt. health spending (% of GDP)",
+  alcohol_consumption_L:   "Alcohol use per person (litres/yr)",
+};
+
+function runLoaderSteps() {
+  return new Promise(resolve => {
+    const steps = document.querySelectorAll(".loader-step");
+    let i = 0;
+    function next() {
+      if (i > 0) steps[i-1].classList.remove("active"), steps[i-1].classList.add("done");
+      if (i < steps.length) { steps[i].classList.add("active"); i++; setTimeout(next, 450); }
+      else resolve();
+    }
+    next();
+  });
+}
+
+async function boot() {
+  const stepsDone = runLoaderSteps();
+  const fetchModel = (async () => {
+    const [modelRes, dataRes] = await Promise.all([fetch("/api/model"), fetch("/api/data")]);
+    if (!modelRes.ok) throw new Error("model");
+    return { model: await modelRes.json(), data: await dataRes.json() };
+  })();
+  try {
+    const [, result] = await Promise.all([stepsDone, fetchModel]);
+    MODEL = result.model;
+    COUNTRY_DATA = result.data;
+    PREDICTORS = Object.keys(MODEL.coefficients);
+    const rates = COUNTRY_DATA.map(d => d.suicide_rate);
+    SUICIDE_MIN = Math.min(...rates);
+    SUICIDE_MAX = Math.max(...rates);
+    document.getElementById("statusText").textContent =
+      `Live · fitted on ${MODEL.nObservations} country-year records · R² = ${MODEL.rSquared.toFixed(2)}`;
+    document.getElementById("statusBadge").classList.add("live");
+    buildUI();
+    document.getElementById("showMathLink").addEventListener("click", renderFormulas);
+  } catch (e) {
+    document.getElementById("main").innerHTML = `
+      <div class="error-box">
+        <strong>Couldn't reach the model server.</strong>
+        <div>Make sure app.py is running.</div>
+        <code>python app.py</code>
+      </div>`;
+  }
+}
+
+function predict(values) {
+  let y = MODEL.intercept;
+  for (const key in MODEL.coefficients) y += MODEL.coefficients[key] * values[key];
+  return Math.max(0, y);
+}
+function defaultValues() { const v = {}; PREDICTORS.forEach(k => v[k] = MODEL.ranges[k].mean); return v; }
+function animateNumber(el, from, to, duration = 450) {
+  const start = performance.now();
+  function tick(now) {
+    const t = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = (from + (to - from) * eased).toFixed(1);
+    if (t < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+function sliderRow(key, id, value) {
+  const r = MODEL.ranges[key];
+  const step = ((r.max - r.min) / 100) || 0.1;
+  return `
+    <div class="slider-row">
+      <label>${LABELS[key]} <span class="val" id="${id}-val">${value.toFixed(1)}</span></label>
+      <input type="range" id="${id}" min="${r.min}" max="${r.max}" step="${step.toFixed(3)}" value="${value}">
+      <div class="range-labels"><span>Lowest: ${r.min.toFixed(1)}</span><span>Highest: ${r.max.toFixed(1)}</span></div>
+    </div>`;
+}
+function panelHTML(inner) {
+  const host = document.getElementById("panelHost");
+  host.innerHTML = "";
+  const wrap = document.createElement("div");
+  wrap.className = "panel";
+  wrap.innerHTML = inner;
+  host.appendChild(wrap);
+  requestAnimationFrame(() => wrap.classList.add("in"));
+  return wrap;
+}
+
+function buildUI() {
+  document.getElementById("main").innerHTML = `
+    <div class="mode-selector">
+      <button class="mode-card active" data-mode="big">
+        <span class="emoji">🔎</span><h3>What matters most?</h3>
+        <p>Which factors actually move the needle</p>
+      </button>
+      <button class="mode-card" data-mode="predict">
+        <span class="emoji">🎚️</span><h3>Try it yourself</h3>
+        <p>Drag sliders, watch the prediction change</p>
+      </button>
+      <button class="mode-card" data-mode="explore">
+        <span class="emoji">🌐</span><h3>See it in 3D</h3>
+        <p>Rotate the model like a landscape</p>
+      </button>
+    </div>
+    <div id="panelHost"></div>`;
+  document.querySelectorAll(".mode-card").forEach(card => {
+    card.addEventListener("click", () => {
+      document.querySelectorAll(".mode-card").forEach(c => c.classList.remove("active"));
+      card.classList.add("active");
+      RENDERERS[card.dataset.mode]();
+    });
+  });
+  renderBigPicture();
+}
+
+// ---------- shared stats ----------
+function mean(a) { return a.reduce((x,y)=>x+y,0)/a.length; }
+function stdDev(a) { const m = mean(a); return Math.sqrt(a.reduce((s,x)=>s+(x-m)**2,0)/(a.length-1)); }
+function pearsonR(xs, ys) {
+  const mx = mean(xs), my = mean(ys);
+  let sxy=0, sxx=0, syy=0;
+  for (let i=0;i<xs.length;i++){ const dx=xs[i]-mx, dy=ys[i]-my; sxy+=dx*dy; sxx+=dx*dx; syy+=dy*dy; }
+  return sxy/Math.sqrt(sxx*syy);
+}
+function simpleLinReg(xs, ys) {
+  const mx=mean(xs), my=mean(ys); let sxy=0, sxx=0;
+  for (let i=0;i<xs.length;i++){ const dx=xs[i]-mx; sxy+=dx*(ys[i]-my); sxx+=dx*dx; }
+  const m = sxy/sxx; return { m, b: my-m*mx };
+}
+
+// ---------- BIG PICTURE (hero view) ----------
+function drawCoefChart(containerId, animate) {
+  const rows = PREDICTORS.map(k => {
+    const xs = COUNTRY_DATA.map(d => d[k]);
+    const ys = COUNTRY_DATA.map(d => d.suicide_rate);
+    const betaStd = MODEL.coefficients[k] * (stdDev(xs) / stdDev(ys));
+    return { label: LABELS[k], betaStd, raw: MODEL.coefficients[k], p: MODEL.pValues[k] };
+  }).sort((a,b) => a.betaStd - b.betaStd);
+  const maxAbs = Math.max(...rows.map(r => Math.abs(r.betaStd)));
+
+  const trace = {
+    type: "bar", orientation: "h",
+    x: animate ? rows.map(()=>0) : rows.map(r => r.betaStd),
+    y: rows.map(r => r.label),
+    marker: { color: rows.map(r => r.betaStd <= 0 ? "#2D6A4F" : "#B23A3A") },
+    text: rows.map(r => (r.betaStd >= 0 ? "+" : "") + r.betaStd.toFixed(2)),
+    textposition: "outside", textfont: { size: 13, family: "Poppins", weight: 600 },
+    hovertext: rows.map(r => `p-value: ${r.p.toFixed(4)}`), hoverinfo: "text",
+  };
+  Plotly.newPlot(containerId, [trace], {
+    margin: { l: 210, r: 50, t: 10, b: 10 },
+    height: 58 * rows.length + 40,
+    xaxis: { visible: false, range: [-maxAbs*1.5, maxAbs*1.5] },
+    yaxis: { tickfont: { size: 13, family: "Poppins" } },
+    paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+    font: { family: "Poppins" },
+  }, { displayModeBar: false, responsive: true });
+
+  if (animate) {
+    setTimeout(() => {
+      Plotly.animate(containerId, { data: [{ x: rows.map(r => r.betaStd) }] },
+        { transition: { duration: 900, easing: "cubic-out" }, frame: { duration: 900 } });
+    }, 150);
+  }
+  return rows;
+}
+
+function drawMiniScatter(containerId, key) {
+  const xs = COUNTRY_DATA.map(d => d[key]);
+  const ys = COUNTRY_DATA.map(d => d.suicide_rate);
+  const { m, b } = simpleLinReg(xs, ys);
+  const r = pearsonR(xs, ys);
+  const xr = [Math.min(...xs), Math.max(...xs)];
+  Plotly.newPlot(containerId, [
+    { x: xs, y: ys, type: "scatter", mode: "markers", marker: { size: 4, color: "#2D6A4F", opacity: 0.35 }, hoverinfo: "skip" },
+    { x: xr, y: xr.map(x => m*x+b), type: "scatter", mode: "lines", line: { color: "#B8860B", width: 2.5 }, hoverinfo: "skip" },
+  ], {
+    margin: { l: 34, r: 8, t: 6, b: 26 },
+    xaxis: { tickfont: { size: 9, family: "Poppins" }, gridcolor: "#EDF2F0" },
+    yaxis: { tickfont: { size: 9, family: "Poppins" }, gridcolor: "#EDF2F0" },
+    paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)", showlegend: false,
+  }, { displayModeBar: false, staticPlot: true });
+  return r;
+}
+
+function renderBigPicture() {
+  const stdBeta = k => MODEL.coefficients[k] * (stdDev(COUNTRY_DATA.map(d=>d[k])) / stdDev(COUNTRY_DATA.map(d=>d.suicide_rate)));
+  const strongest = [...PREDICTORS].sort((a,b) => Math.abs(stdBeta(b)) - Math.abs(stdBeta(a)))[0];
+  const dir = stdBeta(strongest) < 0
+    ? `<span class="arrow-lower">lower</span> ↓`
+    : `<span class="arrow-higher">higher</span> ↑`;
+
+  panelHTML(`
+    <h2>Which factors actually matter?</h2>
+    <p class="desc">Every bar below comes from the same equation — five factors compared side by side.</p>
+
+    <div class="headline">
+      🔑 <strong>${LABELS[strongest]}</strong> has the strongest link — more of it means a ${dir} predicted suicide rate.
+    </div>
+
+    <div id="coefChart"></div>
+    <div class="axis-key">
+      <span><b>Bars pointing left (green)</b> = linked to a lower rate</span>
+      <span><b>Bars pointing right (red)</b> = linked to a higher rate</span>
+      <span><b>Longer bar</b> = bigger effect</span>
+    </div>
+
+    <h3 style="font-size:14px;color:var(--ink-secondary);font-weight:600;margin:30px 0 4px;">See the raw data behind each bar</h3>
+    <p class="chart-caption" style="margin-bottom:10px;">On every mini chart: <b>x-axis</b> = the factor's value &nbsp;·&nbsp; <b>y-axis</b> = suicide rate &nbsp;·&nbsp; each dot = one country, one year</p>
+    <div class="mini-grid" id="miniGrid"></div>
+  `);
+
+  drawCoefChart("coefChart", true);
+
+  const grid = document.getElementById("miniGrid");
+  grid.innerHTML = PREDICTORS.map((k,i) => `
+    <div class="mini-card">
+      <div class="mini-title">${LABELS[k]}</div>
+      <div id="mini-${i}" style="height:140px;"></div>
+      <div class="mini-corr" id="mini-corr-${i}"></div>
+    </div>`).join("");
+  PREDICTORS.forEach((k,i) => {
+    const r = drawMiniScatter(`mini-${i}`, k);
+    const strength = Math.abs(r) > 0.4 ? "strong pattern" : Math.abs(r) > 0.2 ? "moderate pattern" : "weak pattern";
+    document.getElementById(`mini-corr-${i}`).textContent = `${strength} (r = ${r.toFixed(2)})`;
+  });
+}
+
+// ---------- PREDICT ----------
+function renderPredict() {
+  const values = defaultValues();
+  panelHTML(`
+    <h2>Build a country's profile</h2>
+    <p class="desc">Move any slider — the number and the gauge below update live, calculated from the real equation.</p>
+    ${PREDICTORS.map((k,i) => sliderRow(k, "p"+i, values[k])).join("")}
+    <div class="readout" id="readout">
+      <div class="label">Predicted suicide rate</div>
+      <div class="value" id="predictValue">0.0</div>
+      <div class="unit">per 100,000 people</div>
+      <div class="gauge-track"><div class="gauge-marker" id="gaugeMarker" style="left:0%"></div></div>
+      <div class="gauge-labels"><span>Lowest seen worldwide</span><span>Highest seen worldwide</span></div>
+    </div>
+  `);
+  let current = predict(values);
+  document.getElementById("predictValue").textContent = current.toFixed(1);
+  function gaugePct(v) { return Math.max(0, Math.min(100, ((v - SUICIDE_MIN) / (SUICIDE_MAX - SUICIDE_MIN)) * 100)); }
+  document.getElementById("gaugeMarker").style.left = gaugePct(current) + "%";
+
+  function update() {
+    PREDICTORS.forEach((k,i) => {
+      values[k] = parseFloat(document.getElementById("p"+i).value);
+      document.getElementById("p"+i+"-val").textContent = values[k].toFixed(1);
+    });
+    const next = predict(values);
+    animateNumber(document.getElementById("predictValue"), current, next);
+    document.getElementById("gaugeMarker").style.left = gaugePct(next) + "%";
+    current = next;
+    const box = document.getElementById("readout");
+    box.classList.add("pulse");
+    setTimeout(() => box.classList.remove("pulse"), 300);
+  }
+  PREDICTORS.forEach((k,i) => document.getElementById("p"+i).addEventListener("input", update));
+}
+
+// ---------- EXPLORE (3D only) ----------
+function renderExplore() {
+  panelHTML(`
+    <h2>Two factors, one landscape</h2>
+    <p class="desc">Pick two factors below. The <b>height</b> of the surface is the predicted suicide rate — everything else is held at its worldwide average.</p>
+    <div class="axis-row">
+      <div><label style="font-size:12.5px;font-weight:600;">Factor on the X axis (left-right)</label><select id="xAxis"></select></div>
+      <div><label style="font-size:12.5px;font-weight:600;">Factor on the Y axis (front-back)</label><select id="yAxis"></select></div>
+    </div>
+    <div id="plotly3d" style="height:420px;"></div>
+    <p class="chart-caption">🟡 Gold dots = real countries &nbsp;·&nbsp; taller/greener = higher predicted rate &nbsp;·&nbsp; <b>drag to rotate, scroll to zoom</b></p>
+  `);
+
+  PREDICTORS.forEach(k => {
+    document.getElementById("xAxis").innerHTML += `<option value="${k}">${LABELS[k]}</option>`;
+    document.getElementById("yAxis").innerHTML += `<option value="${k}">${LABELS[k]}</option>`;
+  });
+  document.getElementById("yAxis").selectedIndex = 1;
+
+  let spinAngle = 1.5, spinTimer = null;
+
+  function draw3D(withSpin) {
+    const xk = document.getElementById("xAxis").value;
+    const yk = document.getElementById("yAxis").value;
+    if (xk === yk) return;
+    const base = defaultValues();
+    const rx = MODEL.ranges[xk], ry = MODEL.ranges[yk];
+    const N = 24;
+    const xs = Array.from({length:N}, (_,i) => rx.min + (rx.max-rx.min)*i/(N-1));
+    const ys = Array.from({length:N}, (_,i) => ry.min + (ry.max-ry.min)*i/(N-1));
+    const z = ys.map(yv => xs.map(xv => predict({...base, [xk]: xv, [yk]: yv})));
+
+    const surface = {
+      type: "surface", x: xs, y: ys, z: z,
+      colorscale: [[0,"#E7F0EA"],[0.5,"#7FAF95"],[1,"#1B4332"]],
+      opacity: 0.9, showscale: false,
+      contours: { z: { show: true, usecolormap: true, project: {z: true} } }
+    };
+    const points = {
+      type: "scatter3d", mode: "markers",
+      x: COUNTRY_DATA.map(d => d[xk]), y: COUNTRY_DATA.map(d => d[yk]), z: COUNTRY_DATA.map(d => d.suicide_rate),
+      marker: { size: 3, color: "#B8860B", opacity: 0.7 },
+      text: COUNTRY_DATA.map(d => d.country + " (" + d.year + ")"), hoverinfo: "text"
+    };
+    Plotly.react("plotly3d", [surface, points], {
+      margin: {l:0,r:0,t:10,b:0}, font: { family: "Poppins" },
+      scene: {
+        xaxis: {title: LABELS[xk], color: "#5C6F63"},
+        yaxis: {title: LABELS[yk], color: "#5C6F63"},
+        zaxis: {title: "Suicide rate", color: "#5C6F63"},
+        camera: {eye: {x: 1.6*Math.cos(spinAngle), y: 1.6*Math.sin(spinAngle), z: 0.9}}
+      },
+      paper_bgcolor: "rgba(0,0,0,0)",
+    }, {displayModeBar:false, responsive:true});
+
+    if (withSpin) {
+      clearInterval(spinTimer);
+      let t = 0;
+      spinTimer = setInterval(() => {
+        t++;
+        spinAngle += 0.025;
+        Plotly.relayout("plotly3d", { "scene.camera.eye": {x: 1.6*Math.cos(spinAngle), y: 1.6*Math.sin(spinAngle), z: 0.9} });
+        if (t > 90) clearInterval(spinTimer);
+      }, 40);
+    }
+  }
+
+  document.getElementById("xAxis").addEventListener("change", () => draw3D(false));
+  document.getElementById("yAxis").addEventListener("change", () => draw3D(false));
+  draw3D(true); // gentle auto-rotate on open, then settle — draws the eye in
+}
+
+// ---------- FORMULAS (linked from footer, not a tab) ----------
+function sigStars(p) { if (p < 0.01) return "***"; if (p < 0.05) return "**"; if (p < 0.1) return "*"; return ""; }
+function renderFormulas() {
+  document.querySelectorAll(".mode-card").forEach(c => c.classList.remove("active"));
+  const coefRows = PREDICTORS.map((k, i) => {
+    const b = MODEL.coefficients[k], p = MODEL.pValues[k];
+    return `<tr><td>X<sub>${i+1}</sub> — ${LABELS[k]}</td><td>${b >= 0 ? "+" : ""}${b.toFixed(4)}</td><td>${p.toFixed(4)} ${sigStars(p)}</td></tr>`;
+  }).join("");
+  const fittedTerms = PREDICTORS.map((k, i) => {
+    const b = MODEL.coefficients[k];
+    return `${b >= 0 ? "+" : "-"} ${Math.abs(b).toFixed(3)}\\,X_${i+1}`;
+  }).join(" \\; ");
+
+  panelHTML(`
+    <h2>The math behind it</h2>
+    <p class="desc">For anyone who wants to check our work.</p>
+    <div style="overflow-x:auto;padding:6px 0 18px;">$$Y = \\beta_0 + \\beta_1 X_1 + ... + \\beta_5 X_5 + \\varepsilon$$</div>
+    <div style="overflow-x:auto;padding:6px 0 18px;font-size:14px;">$$\\hat{y} = ${MODEL.intercept.toFixed(3)} \\; ${fittedTerms}$$</div>
+    <p class="desc">R² = <b>${MODEL.rSquared.toFixed(4)}</b> · Adjusted R² = <b>${MODEL.adjRSquared.toFixed(4)}</b> · n = <b>${MODEL.nObservations}</b></p>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr style="text-align:left;border-bottom:1px solid var(--border);"><th style="padding:8px 6px;">Predictor</th><th style="padding:8px 6px;">Coefficient</th><th style="padding:8px 6px;">p-value</th></tr></thead>
+      <tbody>${coefRows}</tbody>
+    </table>
+    <p class="desc" style="margin-top:10px;">*** p&lt;0.01 &nbsp; ** p&lt;0.05 &nbsp; * p&lt;0.1</p>
+  `);
+  renderMathInElement(document.getElementById("panelHost"), { delimiters: [{left: "$$", right: "$$", display: true}] });
+}
+
+const RENDERERS = { big: renderBigPicture, predict: renderPredict, explore: renderExplore };
+boot();
+</script>
+</body>
+</html>
