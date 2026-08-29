@@ -635,6 +635,13 @@ function renderRecommend() {
 
 // ---------- FORMULAS ----------
 function sigStars(p) { if (p < 0.01) return "***"; if (p < 0.05) return "**"; if (p < 0.1) return "*"; return ""; }
+const WHY = {
+  psychiatrists_per_100k:  "treatment access — more specialists, more people reached",
+  mh_units_gen_hospitals:  "care infrastructure — how easy intervention is",
+  govt_mh_expenditure_pct: "the policy lever this project is actually testing",
+  govt_health_exp_pct_gdp: "overall healthcare capacity — a control variable",
+  alcohol_consumption_L:   "known risk factor — included as a control",
+};
 function renderFormulas() {
   const coefRows = PREDICTORS.map((k, i) => {
     const b = MODEL.coefficients[k], p = MODEL.pValues[k];
@@ -644,61 +651,79 @@ function renderFormulas() {
     const b = MODEL.coefficients[k];
     return `${b >= 0 ? "+" : "-"} ${Math.abs(b).toFixed(3)}\\,X_${i+1}`;
   }).join(" \\; ");
+  const varRows = PREDICTORS.map((k, i) => {
+    const r = pearsonR(COUNTRY_DATA.map(d => d[k]), COUNTRY_DATA.map(d => d.suicide_rate));
+    return `<tr><td>X<sub>${i+1}</sub> — ${LABELS[k]}</td><td>${WHY[k] || "predictor"}</td><td>${r >= 0 ? "+" : ""}${r.toFixed(2)}</td></tr>`;
+  }).join("");
 
   panelHTML(`
     <h2>Every formula behind every chart</h2>
-    <p class="desc">Same page, same data — here's the exact math running underneath it, for anyone checking our work.</p>
+    <p class="desc">What connects to what, how each number is calculated in general, and how we calculate it here.</p>
 
     <div class="formula-block">
-      <h4>1. Correlation coefficient <span class="used-in">used in: the mini scatter charts on "What matters most?"</span></h4>
+      <h4>0. The variables <span class="used-in">Y = suicide rate · X₁…X₅ = the factors</span></h4>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr style="text-align:left;border-bottom:1px solid var(--border);"><th style="padding:8px 6px;">Variable</th><th style="padding:8px 6px;">Why it's in the model</th><th style="padding:8px 6px;">r with Y</th></tr></thead>
+        <tbody>${varRows}</tbody>
+      </table>
+    </div>
+
+    <div class="callout"><strong>Why multiple, not simple, regression.</strong> Factors here move together — countries that spend more on mental health often also have more psychiatrists. Fit them one at a time (simple regression, §2) and one factor wrongly takes credit for another's effect. Multiple regression (§3) fits all ${PREDICTORS.length} X's in <em>one</em> equation, so each coefficient is that factor's effect <em>alone</em>, others held fixed — that's the actual model behind every prediction on this page.</div>
+
+    <div class="formula-block">
+      <h4>1. Correlation (r) — general <span class="used-in">here: the "r =" on each mini scatter</span></h4>
       <div class="fx">$$r = \\frac{\\sum (x_i-\\bar{x})(y_i-\\bar{y})}{\\sqrt{\\sum (x_i-\\bar{x})^2 \\sum (y_i-\\bar{y})^2}}$$</div>
-      <p>Measures how strongly one factor, alone, tracks with suicide rate. Ranges from −1 (perfect negative) to +1 (perfect positive); 0 = no straight-line relationship.</p>
+      <p>−1 to +1. How strongly one X, alone, tracks with Y. Table above = this formula run once per X.</p>
     </div>
 
     <div class="formula-block">
-      <h4>2. Simple linear regression (one factor) <span class="used-in">used in: the trend line on each mini scatter</span></h4>
+      <h4>2. Simple linear regression — general <span class="used-in">here: trend line on each mini scatter, one X at a time</span></h4>
       <div class="fx">$$\\hat{y} = mx + b, \\quad m = \\frac{\\sum(x_i-\\bar{x})(y_i-\\bar{y})}{\\sum(x_i-\\bar{x})^2}, \\quad b = \\bar{y} - m\\bar{x}$$</div>
-      <p>The single best-fit line through one factor and suicide rate, ignoring the other four — a starting point before the full model.</p>
+      <p>Best-fit line for one X, ignoring the rest. Exploratory only — not the model.</p>
     </div>
 
     <div class="formula-block">
-      <h4>3. Multiple linear regression model <span class="used-in">used in: the whole simulation</span></h4>
+      <h4>3. Multiple linear regression — general <span class="used-in">here: the actual model, all charts</span></h4>
       <div class="fx">$$Y = \\beta_0 + \\beta_1 X_1 + \\beta_2 X_2 + \\beta_3 X_3 + \\beta_4 X_4 + \\beta_5 X_5 + \\varepsilon$$</div>
-      <p>All five factors at once, each with its own coefficient — this is what lets us hold four factors fixed while reading the fifth.</p>
-    </div>
-
-    <div class="formula-block">
-      <h4>4. Ordinary least squares (OLS) estimation <span class="used-in">used in: fitting the equation itself</span></h4>
-      <div class="fx">$$\\hat{\\beta} = (X^{\\top}X)^{-1}X^{\\top}y$$</div>
-      <p>The method that finds the exact coefficients (β) that minimize total squared prediction error across every country-year in the dataset.</p>
-    </div>
-
-    <div class="formula-block">
-      <h4>5. This model's actual fitted equation <span class="used-in">used in: "Try it yourself" & "See it in 3D"</span></h4>
       <div class="fx" style="font-size:14px;">$$\\hat{y} = ${MODEL.intercept.toFixed(3)} \\; ${fittedTerms}$$</div>
-      <p>Plug in real numbers here and you get exactly what the sliders and the 3D surface compute live.</p>
+      <p>All X's at once, each holding the others fixed. Second line = our fitted equation, live — what "Try it yourself" and "See it in 3D" actually run.</p>
     </div>
 
     <div class="formula-block">
-      <h4>6. Standardized coefficient <span class="used-in">used in: the bar chart on "What matters most?"</span></h4>
+      <h4>4. OLS estimation — how β is found <span class="used-in">here: statsmodels fits this once, on startup</span></h4>
+      <div class="fx">$$\\hat{\\beta} = (X^{\\top}X)^{-1}X^{\\top}y$$</div>
+      <p>Solves for the β's that minimize total squared prediction error across all ${MODEL.nObservations} rows.</p>
+    </div>
+
+    <div class="formula-block">
+      <h4>5. Standardized coefficient <span class="used-in">here: the bar chart on "What matters most?"</span></h4>
       <div class="fx">$$\\beta_i^{std} = \\beta_i \\times \\frac{s_{X_i}}{s_{Y}}$$</div>
-      <p>Raw coefficients aren't comparable — a psychiatrist headcount and a spending percentage live on different scales. Multiplying by the ratio of standard deviations puts every factor on the same footing.</p>
+      <p>Raw β's aren't comparable across different units. This rescales them so bar length = fair comparison.</p>
     </div>
 
     <div class="formula-block">
-      <h4>7. Goodness of fit <span class="used-in">used in: the R² shown in the status bar</span></h4>
+      <h4>6. Goodness of fit, as a % <span class="used-in">here: R² in the status bar</span></h4>
       <div class="fx">$$R^2 = 1 - \\frac{SSE}{SST} \\qquad \\bar{R}^2 = 1-(1-R^2)\\frac{n-1}{n-k-1}$$</div>
-      <p>R² = <b>${MODEL.rSquared.toFixed(4)}</b> &nbsp;·&nbsp; Adjusted R² = <b>${MODEL.adjRSquared.toFixed(4)}</b> &nbsp;·&nbsp; n = <b>${MODEL.nObservations}</b> — the share of cross-country variation in suicide rate this model explains.</p>
+      <p>R² = <b>${MODEL.rSquared.toFixed(4)}</b> (${(MODEL.rSquared*100).toFixed(1)}%) &nbsp;·&nbsp; Adj. R² = <b>${MODEL.adjRSquared.toFixed(4)}</b> &nbsp;·&nbsp; n = <b>${MODEL.nObservations}</b></p>
+      <p>Read as a %: 0% = the 5 factors explain nothing, 100% = perfect fit. Higher % = stronger, more complete relationship. Cross-country social data like this rarely clears 30–50% — suicide has causes (culture, genetics, access to means) no dataset fully captures, so our ${(MODEL.rSquared*100).toFixed(1)}% is the share those causes leave for these 5 factors to explain, not a failing grade.</p>
     </div>
 
     <div class="formula-block">
-      <h4>8. Significance test per coefficient <span class="used-in">used in: the p-values in "Recommendations"</span></h4>
+      <h4>7. p-value per coefficient <span class="used-in">here: the badges in "Recommendations"</span></h4>
       <div class="fx">$$t = \\frac{\\hat{\\beta}_i}{SE(\\hat{\\beta}_i)}$$</div>
+      <p>t measures the coefficient against its own uncertainty; p = the chance of seeing a t this large if the true effect were zero. Low p ⇒ unlikely to be noise.</p>
       <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:10px;">
         <thead><tr style="text-align:left;border-bottom:1px solid var(--border);"><th style="padding:8px 6px;">Predictor</th><th style="padding:8px 6px;">Coefficient</th><th style="padding:8px 6px;">p-value</th></tr></thead>
         <tbody>${coefRows}</tbody>
       </table>
-      <p style="margin-top:8px;">*** p&lt;0.01 &nbsp; ** p&lt;0.05 &nbsp; * p&lt;0.1 — standard convention from class. A low p-value means the pattern is unlikely to be random noise.</p>
+      <p style="margin-top:8px;">*** p&lt;0.01 &nbsp; ** p&lt;0.05 &nbsp; * p&lt;0.1</p>
+    </div>
+
+    <div class="formula-block">
+      <h4>8. How this runs, technically <span class="used-in">the actual backend, not a metaphor</span></h4>
+      <p><b>01_pull_who_data.py</b> → downloads WHO/World Bank data → one CSV.
+      <b>app.py</b> reads it, cleans it, fits this exact OLS model with statsmodels <em>once, on server startup</em>, and serves the coefficients as JSON (<code>/api/model</code>, <code>/api/data</code>).
+      This page fetches that JSON on load and computes every chart, r-value, and prediction <em>in your browser</em> — nothing on screen is precomputed or hardcoded.</p>
     </div>
   `);
   renderMathInElement(document.getElementById("panelHost"), { delimiters: [{left: "$$", right: "$$", display: true}] });
