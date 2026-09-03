@@ -214,12 +214,6 @@
   .flow::before {
     content: ""; position: absolute; left: 13px; top: 4px; bottom: 4px; width: 2px; background: var(--border);
   }
-  .flow-dot {
-    position: absolute; left: 8px; width: 12px; height: 12px; border-radius: 50%;
-    background: var(--gold); box-shadow: 0 0 10px 2px rgba(184,134,11,.55);
-  }
-  @media (prefers-reduced-motion: no-preference) { .flow-dot { animation: flowDot 5s linear infinite; } }
-  @keyframes flowDot { 0% { top: 0; opacity: 0; } 6% { opacity: 1; } 94% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
   .flow-step { position: relative; padding-bottom: 22px; opacity: 0; animation: flowIn .5s ease forwards; }
   .flow-step:last-child { padding-bottom: 0; }
   @keyframes flowIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -442,7 +436,6 @@ function renderPipeline() {
     <p class="desc">Every box below is checked live against the data actually loaded in this page right now — not a description, evidence.</p>
 
     <div class="flow">
-      <div class="flow-dot"></div>
 
       <div class="flow-step" style="animation-delay:.02s">
         <div class="flow-num">1</div>
