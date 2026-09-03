@@ -51,8 +51,8 @@
 
   main { max-width: 920px; margin: 0 auto; padding: 0 20px 60px; }
 
-  .mode-selector { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
-  @media (max-width: 620px) { .mode-selector { grid-template-columns: 1fr; } }
+  .mode-selector { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  @media (max-width: 480px) { .mode-selector { grid-template-columns: 1fr; } }
   .mode-card {
     background: var(--card); border: 1.5px solid var(--border); border-radius: 14px;
     padding: 18px; cursor: pointer; text-align: center; font-family: inherit;
@@ -209,6 +209,42 @@
   .glos-title { font-weight: 700; font-size: 13.5px; margin-bottom: 2px; }
   .glos-body { font-size: 12.5px; color: var(--ink-secondary); line-height: 1.55; }
   .glos-body b { color: var(--ink); }
+
+  .flow { position: relative; padding-left: 36px; margin: 6px 0 10px; }
+  .flow::before {
+    content: ""; position: absolute; left: 13px; top: 4px; bottom: 4px; width: 2px; background: var(--border);
+  }
+  .flow-dot {
+    position: absolute; left: 8px; width: 12px; height: 12px; border-radius: 50%;
+    background: var(--gold); box-shadow: 0 0 10px 2px rgba(184,134,11,.55);
+  }
+  @media (prefers-reduced-motion: no-preference) { .flow-dot { animation: flowDot 5s linear infinite; } }
+  @keyframes flowDot { 0% { top: 0; opacity: 0; } 6% { opacity: 1; } 94% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
+  .flow-step { position: relative; padding-bottom: 22px; opacity: 0; animation: flowIn .5s ease forwards; }
+  .flow-step:last-child { padding-bottom: 0; }
+  @keyframes flowIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .flow-num {
+    position: absolute; left: -36px; top: 0; width: 27px; height: 27px; border-radius: 50%;
+    background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; box-shadow: 0 0 0 4px var(--card);
+  }
+  .flow-title { font-weight: 700; font-size: 13.5px; margin-bottom: 3px; }
+  .flow-body { font-size: 12.5px; color: var(--ink-secondary); line-height: 1.55; }
+  .flow-body b { color: var(--ink); }
+
+  .evidence { margin: 8px 0 4px; border: 1px dashed #C7DACD; border-radius: 10px; padding: 10px 12px; background: var(--accent-light); }
+  .evidence-label {
+    font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--accent-mid); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+  }
+  .evidence-label .live-dot { width: 6px; height: 6px; border-radius: 50%; background: #2ecc71; }
+  @media (prefers-reduced-motion: no-preference) { .evidence-label .live-dot { animation: pulse 2s ease-in-out infinite; } }
+  .live-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .live-table th { text-align: left; padding: 4px 8px; color: var(--ink-faint); font-weight: 600; border-bottom: 1px solid #C7DACD; white-space: nowrap; }
+  .live-table td { padding: 4px 8px; border-bottom: 1px solid #DDEAE1; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .code-line { font-size: 11px; color: var(--accent); word-break: break-all; }
+
+  .arrow-tile { display: flex; align-items: center; justify-content: center; font-size: 22px; color: var(--ink-faint); }
 </style>
 </head>
 <body>
@@ -336,6 +372,10 @@ function buildUI() {
         <span class="emoji">🔎</span><h3>Overview</h3>
         <p>The problem, the findings, the recommendation</p>
       </button>
+      <button class="mode-card" data-mode="pipeline">
+        <span class="emoji">🛠️</span><h3>How it's built</h3>
+        <p>API → CSV → cleaning → model → prediction</p>
+      </button>
       <button class="mode-card" data-mode="tryit">
         <span class="emoji">🎚️</span><h3>Try it yourself</h3>
         <p>Sliders + a 3D surface, live</p>
@@ -371,6 +411,121 @@ function simpleLinReg(xs, ys) {
   const m = sxy/sxx; return { m, b: my-m*mx };
 }
 
+// ---------- PIPELINE (API -> CSV -> cleaning -> model -> prediction, with live evidence) ----------
+function countUp(el, to, opts = {}) {
+  const { decimals = 0, duration = 1100, prefix = "", suffix = "" } = opts;
+  const start = performance.now();
+  function tick(now) {
+    const t = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = prefix + (to * eased).toFixed(decimals) + suffix;
+    if (t < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+function renderPipeline() {
+  const sampleRows = COUNTRY_DATA.slice(0, 5);
+  const sampleCols = ["country", "year", PREDICTORS[0], "suicide_rate"];
+  const liveTable = `
+    <table class="live-table">
+      <thead><tr>${sampleCols.map(c => `<th>${c}</th>`).join("")}</tr></thead>
+      <tbody>${sampleRows.map(r => `<tr>${sampleCols.map(c => `<td>${r[c]}</td>`).join("")}</tr>`).join("")}</tbody>
+    </table>`;
+
+  const example = defaultValues();
+  const exampleY = predict(example);
+  const exampleLine = PREDICTORS.map(k => `${LABELS[k].split(" (")[0]} = ${example[k].toFixed(1)}`).join(", ");
+
+  panelHTML(`
+    <h2>How this is actually built</h2>
+    <p class="desc">Every box below is checked live against the data actually loaded in this page right now — not a description, evidence.</p>
+
+    <div class="flow">
+      <div class="flow-dot"></div>
+
+      <div class="flow-step" style="animation-delay:.02s">
+        <div class="flow-num">1</div>
+        <div class="flow-title">Pulling data from APIs</div>
+        <div class="flow-body"><b>01_pull_who_data.py</b> calls the WHO Global Health Observatory API and the World Bank API. Each call returns raw <b>JSON</b>.</div>
+        <div class="evidence">
+          <div class="evidence-label">Example of what one API call returns</div>
+          <div class="code-line">{"country":"IND","year":"2019","value":9.57,"indicator":"MH_12"}</div>
+        </div>
+      </div>
+
+      <div class="flow-step" style="animation-delay:.14s">
+        <div class="flow-num">2</div>
+        <div class="flow-title">Turning that into one CSV</div>
+        <div class="flow-body">All 6 indicators get merged into one table, matched by country + year, saved as <b>who_mental_health_suicide_panel.csv</b>.</div>
+        <div class="evidence">
+          <div class="evidence-label"><span class="live-dot"></span>Live — first 5 rows actually loaded right now</div>
+          ${liveTable}
+        </div>
+      </div>
+
+      <div class="flow-step" style="animation-delay:.26s">
+        <div class="flow-num">3</div>
+        <div class="flow-title">Cleaning / formatting it</div>
+        <div class="flow-body">Missing values are forward/backward-filled within each country; rows still missing data are dropped.</div>
+        <div class="evidence">
+          <div class="evidence-label"><span class="live-dot"></span>Live — before vs. after cleaning</div>
+          <div class="stat-row" style="margin-bottom:0;">
+            <div class="stat-tile"><div class="n">~5,300</div><div class="l">raw rows pulled</div></div>
+            <div class="arrow-tile">→</div>
+            <div class="stat-tile"><div class="n" id="cleanedCount">0</div><div class="l">clean rows used by the model</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-step" style="animation-delay:.38s">
+        <div class="flow-num">4</div>
+        <div class="flow-title">Fitting our own regression model</div>
+        <div class="flow-body">Not pre-trained — <b>app.py</b> fits a fresh Multiple Linear Regression (OLS, statsmodels) on this exact cleaned data, every server start.</div>
+      </div>
+
+      <div class="flow-step" style="animation-delay:.50s">
+        <div class="flow-num">5</div>
+        <div class="flow-title">What "the regression model" is</div>
+        <div class="flow-body">One equation: suicide rate = baseline + (weight × each factor). Here's ours, live:</div>
+        <div class="evidence">
+          <div class="evidence-label"><span class="live-dot"></span>Live fitted equation</div>
+          <div class="fx" style="padding:2px 0;font-size:12.5px;" id="pipelineEq"></div>
+        </div>
+      </div>
+
+      <div class="flow-step" style="animation-delay:.62s">
+        <div class="flow-num">6</div>
+        <div class="flow-title">How it's processed end-to-end</div>
+        <div class="flow-body">Server starts → reads CSV → cleans → fits the model once → serves it as JSON (<b>/api/model</b>, <b>/api/data</b>). This page fetches that JSON and computes everything in your browser.</div>
+      </div>
+
+      <div class="flow-step" style="animation-delay:.74s">
+        <div class="flow-num">7</div>
+        <div class="flow-title">What "the prediction" is</div>
+        <div class="flow-body">The equation above, solved for real numbers. Worked example, computed live right now:</div>
+        <div class="evidence">
+          <div class="evidence-label"><span class="live-dot"></span>Live worked example — dataset averages</div>
+          <div class="code-line" style="margin-bottom:8px;">${exampleLine}</div>
+          <div class="readout" style="margin-top:0;padding:14px;">
+            <div class="label">→ predicted suicide rate</div>
+            <div class="value" id="pipelinePred" style="font-size:32px;">0.0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `);
+
+  countUp(document.getElementById("cleanedCount"), MODEL.nObservations);
+  countUp(document.getElementById("pipelinePred"), exampleY, { decimals: 1 });
+  document.getElementById("pipelineEq").innerHTML =
+    `$$\\hat{y} = ${MODEL.intercept.toFixed(3)} \\; ${PREDICTORS.map((k,i) => {
+      const b = MODEL.coefficients[k];
+      return `${b >= 0 ? "+" : "-"} ${Math.abs(b).toFixed(3)}\\,X_${i+1}`;
+    }).join(" \\; ")}$$`;
+  renderMathInElement(document.getElementById("pipelineEq"), { delimiters: [{left: "$$", right: "$$", display: true}] });
+}
+
 // ---------- OVERVIEW (problem + findings + recommendation, one screen) ----------
 function drawCoefChart(containerId, animate) {
   const rows = PREDICTORS.map(k => {
@@ -391,10 +546,10 @@ function drawCoefChart(containerId, animate) {
     hovertext: rows.map(r => `p-value: ${r.p.toFixed(4)}`), hoverinfo: "text",
   };
   Plotly.newPlot(containerId, [trace], {
-    margin: { l: 210, r: 50, t: 10, b: 10 },
+    margin: { l: 10, r: 50, t: 10, b: 10, autoexpand: true },
     height: 58 * rows.length + 40,
     xaxis: { visible: false, range: [-maxAbs*1.5, maxAbs*1.5] },
-    yaxis: { tickfont: { size: 13, family: "Poppins" } },
+    yaxis: { tickfont: { size: 12, family: "Poppins" }, automargin: true },
     paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
     font: { family: "Poppins" },
   }, { displayModeBar: false, responsive: true });
@@ -649,7 +804,7 @@ function renderMath() {
   renderMathInElement(document.getElementById("panelHost"), { delimiters: [{left: "$$", right: "$$", display: true}] });
 }
 
-const RENDERERS = { overview: renderOverview, tryit: renderTryIt, math: renderMath };
+const RENDERERS = { overview: renderOverview, pipeline: renderPipeline, tryit: renderTryIt, math: renderMath };
 boot();
 </script>
 </body>
