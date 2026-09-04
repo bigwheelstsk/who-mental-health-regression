@@ -600,7 +600,9 @@ function renderOverview() {
 
     <div class="mini-grid" id="miniGrid" style="margin-top:24px;"></div>
 
-    <div class="callout" style="margin-top:22px;"><strong>Bottom line:</strong> ${strongest.p < 0.05 ? `${LABELS[strongest.key]} is the strongest, statistically significant lever we found` : "no single factor is statistically decisive here"} — but this is <em>association</em> from cross-country data, not proof of cause.</div>
+    <div class="callout" style="margin-top:22px;"><strong>Notice a bar pointing the "wrong" way?</strong> More psychiatrists or hospital units linking to a <em>higher</em> predicted rate isn't a bug — it's <b>reverse causality &amp; confounding</b>. Countries often build psychiatric infrastructure <em>in response to</em> an existing crisis, not before it; and countries with more psychiatrists tend to be wealthier, with far better death-reporting than lower-income countries. This model can't separate "care lowers suicide" from "richer countries have both more psychiatrists and better-recorded suicide statistics" with only 5 factors.</div>
+
+    <div class="callout" style="margin-top:14px;"><strong>Bottom line:</strong> ${strongest.p < 0.05 ? `${LABELS[strongest.key]} is the strongest, statistically significant lever we found` : "no single factor is statistically decisive here"} — but this is <em>association</em> from cross-country data, not proof of cause.</div>
   `);
 
   drawCoefChart("coefChart", true);
