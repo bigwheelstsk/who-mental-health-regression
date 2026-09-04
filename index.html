@@ -7,10 +7,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist@2.35.2/plotly.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/plotly.js-dist@2.35.2/plotly.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <style>
   :root {
     --bg: #F3F6F4;
@@ -149,19 +149,10 @@
   .stat-tile .n { font-size: 26px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
   .stat-tile .l { font-size: 11px; color: var(--ink-secondary); margin-top: 4px; }
 
-  .problem-list { margin: 0 0 22px; padding: 0; list-style: none; }
-  .problem-list li { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13.5px; }
-  .problem-list li:last-child { border-bottom: none; }
-  .problem-list .tag {
-    flex-shrink: 0; font-size: 10.5px; font-weight: 700; color: var(--accent-mid);
-    background: var(--accent-light); border-radius: 6px; padding: 3px 7px; height: fit-content;
-  }
-
   .callout {
     border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px;
     font-size: 13px; color: var(--ink-secondary); margin: 4px 0 22px; line-height: 1.55;
   }
-  .callout.warn { background: var(--danger-light); border-color: #E8C7C7; color: var(--danger); }
   .callout strong { color: inherit; }
 
   .rec-card {
@@ -183,18 +174,6 @@
   }
   .rec-badge.sig { background: var(--accent-light); color: var(--accent); }
   .rec-badge.nsig { background: #F0F0EC; color: var(--ink-faint); }
-
-  .formula-block { margin: 26px 0 18px; }
-  .formula-block h4 {
-    font-size: 13px; font-weight: 700; color: var(--accent); margin: 0 0 4px;
-    display: flex; align-items: center; gap: 8px;
-  }
-  .formula-block .used-in {
-    font-size: 10.5px; font-weight: 600; color: var(--ink-faint); text-transform: none;
-    background: #F0F0EC; padding: 2px 8px; border-radius: 6px;
-  }
-  .formula-block .fx { overflow-x: auto; padding: 10px 0; font-size: 15px; }
-  .formula-block p { font-size: 12.5px; color: var(--ink-secondary); margin: 2px 0 0; }
 
   .toggle-pills { display: inline-flex; background: var(--accent-light); border-radius: 20px; padding: 3px; margin-bottom: 20px; }
   .toggle-pills button {
@@ -293,15 +272,38 @@ function runLoaderSteps() {
   });
 }
 
+function fetchWithTimeout(url, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(id));
+}
+function waitFor(check, timeoutMs = 15000, intervalMs = 50) {
+  return new Promise((resolve, reject) => {
+    const start = performance.now();
+    (function poll() {
+      if (check()) return resolve();
+      if (performance.now() - start > timeoutMs) return reject(new Error("library load timeout"));
+      setTimeout(poll, intervalMs);
+    })();
+  });
+}
+
 async function boot() {
   const stepsDone = runLoaderSteps();
   const fetchModel = (async () => {
-    const [modelRes, dataRes] = await Promise.all([fetch("/api/model"), fetch("/api/data")]);
+    const [modelRes, dataRes] = await Promise.all([fetchWithTimeout("/api/model"), fetchWithTimeout("/api/data")]);
     if (!modelRes.ok) throw new Error("model");
     return { model: await modelRes.json(), data: await dataRes.json() };
   })();
+  // Plotly/KaTeX load with `defer`, so on a slow connection they may still be
+  // downloading when this resolves -- wait for them explicitly rather than
+  // assume they're ready (this is exactly the "venue wifi" failure mode).
+  const libsReady = Promise.all([
+    waitFor(() => window.Plotly),
+    waitFor(() => window.katex && window.renderMathInElement),
+  ]);
   try {
-    const [, result] = await Promise.all([stepsDone, fetchModel]);
+    const [, result] = await Promise.all([stepsDone, fetchModel, libsReady]);
     MODEL = result.model;
     COUNTRY_DATA = result.data;
     PREDICTORS = Object.keys(MODEL.coefficients);
@@ -313,10 +315,13 @@ async function boot() {
     document.getElementById("statusBadge").classList.add("live");
     buildUI();
   } catch (e) {
+    const reason = e.name === "AbortError" ? "The server took too long to respond."
+      : e.message === "library load timeout" ? "Chart/formula libraries failed to load (check your internet connection)."
+      : "Couldn't reach the model server.";
     document.getElementById("main").innerHTML = `
       <div class="error-box">
-        <strong>Couldn't reach the model server.</strong>
-        <div>Make sure app.py is running.</div>
+        <strong>${reason}</strong>
+        <div>Make sure app.py is running and you have a stable connection, then reload.</div>
         <code>python app.py</code>
       </div>`;
   }
@@ -530,7 +535,7 @@ function drawCoefChart(containerId, animate) {
     const xs = COUNTRY_DATA.map(d => d[k]);
     const ys = COUNTRY_DATA.map(d => d.suicide_rate);
     const betaStd = MODEL.coefficients[k] * (stdDev(xs) / stdDev(ys));
-    return { label: LABELS[k], betaStd, raw: MODEL.coefficients[k], p: MODEL.pValues[k] };
+    return { label: LABELS[k], betaStd, raw: MODEL.coefficients[k], p: MODEL.pValues[k], pClustered: MODEL.pValuesClustered[k] };
   }).sort((a,b) => a.betaStd - b.betaStd);
   const maxAbs = Math.max(...rows.map(r => Math.abs(r.betaStd)));
 
@@ -541,7 +546,7 @@ function drawCoefChart(containerId, animate) {
     marker: { color: rows.map(r => r.betaStd <= 0 ? "#2D6A4F" : "#B23A3A") },
     text: rows.map(r => (r.betaStd >= 0 ? "+" : "") + r.betaStd.toFixed(2)),
     textposition: "outside", textfont: { size: 13, family: "Poppins", weight: 600 },
-    hovertext: rows.map(r => `p-value: ${r.p.toFixed(4)}`), hoverinfo: "text",
+    hovertext: rows.map(r => `p (naive) = ${r.p.toFixed(4)}<br>p (clustered by country) = ${r.pClustered.toFixed(4)}`), hoverinfo: "text",
   };
   Plotly.newPlot(containerId, [trace], {
     margin: { l: 10, r: 50, t: 10, b: 10, autoexpand: true },
@@ -583,39 +588,63 @@ function correlationEvidence() {
   const need = ["psychiatrists_per_100k", "mh_units_gen_hospitals", "govt_mh_expenditure_pct", "govt_health_exp_pct_gdp"];
   if (!need.every(k => PREDICTORS.includes(k))) return null;
   const col = k => COUNTRY_DATA.map(d => d[k]);
+  const y = col("suicide_rate");
   return {
-    rPsych: pearsonR(col("psychiatrists_per_100k"), col("suicide_rate")),
-    rUnits: pearsonR(col("mh_units_gen_hospitals"), col("suicide_rate")),
-    rSpend: pearsonR(col("govt_mh_expenditure_pct"), col("suicide_rate")),
-    rSpendPsych: pearsonR(col("govt_mh_expenditure_pct"), col("psychiatrists_per_100k")),
-    rSpendHealth: pearsonR(col("govt_mh_expenditure_pct"), col("govt_health_exp_pct_gdp")),
+    rPsych: pearsonR(col("psychiatrists_per_100k"), y),
+    rUnits: pearsonR(col("mh_units_gen_hospitals"), y),
+    rMhSpend: pearsonR(col("govt_mh_expenditure_pct"), y),
+    rHealthSpend: pearsonR(col("govt_health_exp_pct_gdp"), y),
+    rMhSpendPsych: pearsonR(col("govt_mh_expenditure_pct"), col("psychiatrists_per_100k")),
+    rHealthSpendPsych: pearsonR(col("govt_health_exp_pct_gdp"), col("psychiatrists_per_100k")),
   };
 }
 function fmtR(x) { return (x >= 0 ? "+" : "") + x.toFixed(2); }
+function fmtP(x) { return x < 0.0001 ? "<0.0001" : x.toFixed(4); }
 
 function renderOverview() {
   const stdBeta = k => MODEL.coefficients[k] * (stdDev(COUNTRY_DATA.map(d=>d[k])) / stdDev(COUNTRY_DATA.map(d=>d.suicide_rate)));
-  const rows = PREDICTORS.map(k => ({ key: k, betaStd: stdBeta(k), p: MODEL.pValues[k] })).sort((a,b) => Math.abs(b.betaStd) - Math.abs(a.betaStd));
+  const rows = PREDICTORS.map(k => ({ key: k, betaStd: stdBeta(k), p: MODEL.pValues[k], pClustered: MODEL.pValuesClustered[k] })).sort((a,b) => Math.abs(b.betaStd) - Math.abs(a.betaStd));
   const strongest = rows[0];
   const dir = strongest.betaStd < 0 ? `<span class="arrow-lower">lower</span> ↓` : `<span class="arrow-higher">higher</span> ↑`;
   const ev = correlationEvidence();
+  const vifVals = Object.values(MODEL.vif);
+  const vifRange = `${Math.min(...vifVals).toFixed(2)}–${Math.max(...vifVals).toFixed(2)}`;
+
   const wrongWayCallouts = ev ? `
-    <div class="callout" style="margin-top:22px;"><strong>Notice a bar pointing the "wrong" way?</strong> Psychiatrists (r = ${fmtR(ev.rPsych)}) and hospital units (r = ${fmtR(ev.rUnits)}) are positively linked to suicide rate even in the <b>raw</b> data, before any modeling — so it's not a regression artifact. The likely reason is <b>composition, not causation</b>: the highest-psychiatrist countries here (e.g. Finland, Estonia, Slovenia, Japan) are wealthier nations with both stronger death-registration <em>and</em>, independently, higher recorded suicide rates. With only 5 factors, the model can't separate "care" from "which countries happen to have it."</div>
-    <div class="callout" style="margin-top:14px;"><strong>The more rigorous finding:</strong> govt. mental-health spending barely correlates with suicide rate alone (r = ${fmtR(ev.rSpend)}) — yet becomes a significant <em>negative</em> predictor once psychiatrists and health spending are held constant. That's a genuine <b>suppression effect</b>: spending is highly collinear with psychiatrist supply (r = ${fmtR(ev.rSpendPsych)}) and general health spending (r = ${fmtR(ev.rSpendHealth)}), so regression only reveals spending's own contribution after removing what it shares with the other two.</div>
+    <div class="callout" style="margin-top:22px;"><strong>Notice a bar pointing the "wrong" way?</strong> Psychiatrists (r = ${fmtR(ev.rPsych)}) and hospital units (r = ${fmtR(ev.rUnits)}) are positively linked to suicide rate even in the <b>raw</b> data, before any modeling — not a regression artifact. It's likely <b>composition, not causation</b>: the highest-psychiatrist countries here (e.g. New Zealand, Poland, Finland, Estonia, Japan) are wealthy, high-income nations with both stronger death-registration <em>and</em>, independently, higher recorded suicide rates — this isn't one specific region, just "wealthier countries" broadly. Only <b>psychiatrists'</b> link survives clustered testing (p=${fmtP(MODEL.pValuesClustered.psychiatrists_per_100k)}); hospital units' does not (p=${fmtP(MODEL.pValuesClustered.mh_units_gen_hospitals)}) — likely a weaker echo of the same pattern, not independently confirmed.</div>
+    <div class="callout" style="margin-top:14px;"><strong>The more rigorous finding:</strong> <em>both</em> spending variables barely correlate with suicide rate alone (govt. MH spend r=${fmtR(ev.rMhSpend)}, govt. health spend r=${fmtR(ev.rHealthSpend)}) — yet both flip to a <em>negative</em> predictor once psychiatrists is held constant. That's a genuine <b>suppression effect</b>: both are highly collinear with psychiatrist supply (r=${fmtR(ev.rMhSpendPsych)} and r=${fmtR(ev.rHealthSpendPsych)}). Multicollinearity here is moderate, not severe — VIFs run ${vifRange} across all 5 factors (concern typically starts above 5–10) — the model isn't breaking, it's isolating each factor's own contribution.</div>
   ` : `
     <div class="callout" style="margin-top:22px;"><strong>Notice a bar pointing the "wrong" way?</strong> Some factors here are strongly correlated with each other (collinear) — regression can only isolate each one's <em>independent</em> contribution, which can look counter-intuitive on its own.</div>
   `;
+
+  const anySigClustered = PREDICTORS.some(k => MODEL.pValuesClustered[k] < 0.05);
+  const sigKey = PREDICTORS.find(k => MODEL.pValuesClustered[k] < 0.05);
+
+  const robustRows = [...PREDICTORS].sort((a,b) => MODEL.pValuesClustered[a] - MODEL.pValuesClustered[b]);
+  const robustCards = robustRows.map((k,i) => {
+    const sig = MODEL.pValuesClustered[k] < 0.05;
+    return `
+      <div class="rec-card ${sig ? "" : "risk"}">
+        <div class="rec-num">${i+1}</div>
+        <div>
+          <div class="rec-title">${LABELS[k]}</div>
+          <div class="rec-body">naive p = ${fmtP(MODEL.pValues[k])} &nbsp;→&nbsp; clustered p = ${fmtP(MODEL.pValuesClustered[k])}</div>
+          <span class="rec-badge ${sig ? "sig" : "nsig"}">${sig ? "SURVIVES CLUSTERING" : "DOESN'T SURVIVE CLUSTERING"}</span>
+        </div>
+      </div>`;
+  }).join("");
 
   panelHTML(`
     <h2>Does mental health spending lower suicide rates?</h2>
     <p class="desc">Suicide rate and each factor are continuous numbers, not categories — so we used <b>multiple regression</b> to quantify all ${PREDICTORS.length} at once, instead of guessing from one factor at a time.</p>
     <div class="stat-row">
       <div class="stat-tile"><div class="n">700,000+</div><div class="l">suicides/year worldwide (WHO)</div></div>
-      <div class="stat-tile"><div class="n">${MODEL.nObservations}</div><div class="l">country-years in this model</div></div>
+      <div class="stat-tile"><div class="n">${MODEL.nObservations}</div><div class="l">country-year rows</div></div>
+      <div class="stat-tile"><div class="n">${MODEL.nCountries}</div><div class="l">real countries (the honest sample size)</div></div>
       <div class="stat-tile"><div class="n">${(MODEL.rSquared*100).toFixed(0)}%</div><div class="l">of the pattern this model explains</div></div>
     </div>
 
-    <div class="headline">🔑 <strong>${LABELS[strongest.key]}</strong> has the strongest link — more of it means a ${dir} predicted rate.</div>
+    <div class="headline">🔑 <strong>${LABELS[strongest.key]}</strong> has the strongest link — more of it means a ${dir} predicted rate. <span style="font-size:13px;font-weight:500;">See "Robustness check" below for which factors actually hold up.</span></div>
 
     <div id="coefChart"></div>
     <div class="axis-key">
@@ -629,7 +658,11 @@ function renderOverview() {
 
     ${wrongWayCallouts}
 
-    <div class="callout" style="margin-top:14px;"><strong>Bottom line:</strong> ${strongest.p < 0.05 ? `${LABELS[strongest.key]} is the strongest, statistically significant lever we found` : "no single factor is statistically decisive here"} — but this is <em>association</em> from cross-country data, not proof of cause.</div>
+    <h3 style="font-size:14px;color:var(--ink-secondary);font-weight:600;margin:26px 0 10px;">Robustness check — do these p-values actually hold up?</h3>
+    <div class="callout" style="margin-top:0;"><strong>Short answer: mostly no.</strong> These ${MODEL.nObservations} rows aren't independent — they're ${MODEL.nCountries} countries observed repeatedly, and a country's suicide rate barely moves year to year (Durbin-Watson = ${MODEL.durbinWatson.toFixed(3)}, near 0 = severe autocorrelation). Naive p-values treat every row as independent evidence and overstate significance. Clustering standard errors by country — the standard fix — shows the real effective sample size is closer to <b>${MODEL.nCountries} countries</b> than ${MODEL.nObservations} rows.</div>
+    ${robustCards}
+
+    <div class="callout" style="margin-top:22px;"><strong>Bottom line:</strong> ${anySigClustered ? `${LABELS[sigKey]} is the only factor that survives rigorous (clustered) testing at p&lt;0.05` : "no factor is statistically decisive once we account for repeated country observations"} — and even that is <em>association</em> from cross-country data, not proof of cause.</div>
   `);
 
   drawCoefChart("coefChart", true);
@@ -679,7 +712,7 @@ function renderSliders() {
   const values = defaultValues();
   const ev = correlationEvidence();
   const sliderCallout = ev
-    ? `<div class="callout" style="margin-top:18px;"><strong>Why do some sliders push the number up?</strong> Real result, not a bug. Psychiatrists &amp; hospital units are positively linked to suicide rate even in the <b>raw</b> data (r = ${fmtR(ev.rPsych)}, ${fmtR(ev.rUnits)}) — composition, not causation: countries with more of both tend to be wealthier <em>and</em> better at recording suicide deaths. Govt. mental-health spending is different: barely correlated alone (r = ${fmtR(ev.rSpend)}), but flips negative once psychiatrists and health spending are held constant — a genuine <b>suppression effect</b> from how collinear those three are. See "The math" tab for the numbers.</div>`
+    ? `<div class="callout" style="margin-top:18px;"><strong>Why do some sliders push the number up?</strong> Psychiatrists &amp; hospital units are positively linked to suicide rate even in the <b>raw</b> data (r = ${fmtR(ev.rPsych)}, ${fmtR(ev.rUnits)}) — composition, not causation: countries with more of both tend to be wealthier and better at recording suicide deaths. Both spending variables are the opposite: barely correlated alone, but flip negative once psychiatrists is held constant — a genuine <b>suppression effect</b> from collinearity, not noise. But only <b>psychiatrists' own effect survives</b> rigorous testing once we account for repeated country observations (clustered p=${fmtP(MODEL.pValuesClustered.psychiatrists_per_100k)}) — see "Overview → Robustness check" for the rest.</div>`
     : `<div class="callout" style="margin-top:18px;"><strong>Why do some sliders push the number up?</strong> Real, statistically significant results — some factors here are collinear, so regression isolates each one's independent contribution, which can look counter-intuitive on its own.</div>`;
   document.getElementById("viewSliders").innerHTML = `
     ${PREDICTORS.map((k,i) => sliderRow(k, "p"+i, values[k])).join("")}
@@ -719,7 +752,8 @@ function renderExplore3D() {
       <div><label style="font-size:12.5px;font-weight:600;">Y axis</label><select id="yAxis"></select></div>
     </div>
     <div id="plotly3d" style="height:420px;"></div>
-    <p class="chart-caption">🟡 Gold dots = real countries &nbsp;·&nbsp; height = predicted rate &nbsp;·&nbsp; <b>drag to rotate</b></p>`;
+    <p class="chart-caption">🟡 Gold dots = real countries &nbsp;·&nbsp; height = predicted rate &nbsp;·&nbsp; <b>drag to rotate</b></p>
+    <p class="chart-caption" style="margin-top:4px;">Surface is a flat tilted plane by design — the model is linear with no interaction terms, so it can't curve. The 3 unselected factors are held at their dataset average.</p>`;
 
   PREDICTORS.forEach(k => {
     document.getElementById("xAxis").innerHTML += `<option value="${k}">${LABELS[k]}</option>`;
@@ -804,6 +838,16 @@ function renderMath() {
       <div class="fx" style="font-size:13px;padding-top:4px;">$$\\hat{\\beta} = (X^{\\top}X)^{-1}X^{\\top}y \\qquad \\text{minimizes} \\;\\; \\sum_{i=1}^{n} (y_i - \\hat{y}_i)^2$$</div>
     </div>
 
+    <div class="evidence" style="margin-bottom:22px;">
+      <div class="evidence-label">Is "p &lt; 0.05" trustworthy here? Check the panel-data assumptions</div>
+      <p style="font-size:12.5px;color:var(--ink-secondary);line-height:1.6;margin:0 0 8px;">This is panel data — ${MODEL.nCountries} countries, each observed multiple times. Plain OLS assumes every row is independent, which repeated same-country rows aren't.</p>
+      <div style="font-size:12.5px; line-height:1.9;">
+        <div><b>Durbin-Watson</b> = ${MODEL.durbinWatson.toFixed(3)} <span style="color:var(--ink-faint);">(0-4 scale; near 0 = severe positive autocorrelation, as expected here)</span></div>
+        <div><b>VIF range</b> = ${Math.min(...Object.values(MODEL.vif)).toFixed(2)}–${Math.max(...Object.values(MODEL.vif)).toFixed(2)} <span style="color:var(--ink-faint);">(moderate collinearity; concern typically starts above 5-10)</span></div>
+      </div>
+      <p style="font-size:12.5px;color:var(--ink-secondary);line-height:1.6;margin:8px 0 0;">Fix: refit with <b>cluster-robust standard errors</b>, grouped by country. That's what "p (clustered)" means everywhere on this site — treat it, not the naive p, as the real significance test. See Overview → "Robustness check" for the full comparison.</p>
+    </div>
+
     <h3 style="font-size:13.5px;color:var(--ink-secondary);font-weight:600;margin:0 0 6px;">How that formula actually produces this line, step by step</h3>
     <div class="flow" style="margin-bottom:22px;">
       <div class="flow-step" style="animation-delay:.02s">
@@ -856,7 +900,7 @@ function renderMath() {
     <div class="glos-card">
       <div class="glos-icon">🎯</div>
       <div><div class="glos-title">p-value & the 5% threshold</div>
-      <div class="glos-body">The chance a coefficient is pure noise. We treat a factor as a real effect when <b>p &lt; 0.05</b> — under 5% odds it's noise. Standard cutoff in statistics.</div></div>
+      <div class="glos-body">The chance a coefficient is pure noise. <b>p &lt; 0.05</b> is the standard cutoff — but with panel data, use the <b>clustered</b> p-value (above), not the naive one, or you'll overstate what's real.</div></div>
     </div>
     <div class="glos-card">
       <div class="glos-icon">📊</div>
