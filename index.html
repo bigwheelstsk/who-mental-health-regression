@@ -341,9 +341,11 @@ function animateNumber(el, from, to, duration = 450) {
 function sliderRow(key, id, value) {
   const r = MODEL.ranges[key];
   const step = ((r.max - r.min) / 100) || 0.1;
+  const up = MODEL.coefficients[key] > 0;
+  const dirTag = `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;margin-left:8px;white-space:nowrap;background:${up ? "var(--danger-light)" : "var(--accent-light)"};color:${up ? "var(--danger)" : "var(--accent-mid)"};">${up ? "↑ raises rate" : "↓ lowers rate"}</span>`;
   return `
     <div class="slider-row">
-      <label>${LABELS[key]} <span class="val" id="${id}-val">${value.toFixed(1)}</span></label>
+      <label><span>${LABELS[key]}${dirTag}</span> <span class="val" id="${id}-val">${value.toFixed(1)}</span></label>
       <input type="range" id="${id}" min="${r.min}" max="${r.max}" step="${step.toFixed(3)}" value="${value}">
       <div class="range-labels"><span>Lowest: ${r.min.toFixed(1)}</span><span>Highest: ${r.max.toFixed(1)}</span></div>
     </div>`;
@@ -442,7 +444,10 @@ function renderPipeline() {
         <div class="flow-title">Pulling data from APIs</div>
         <div class="flow-body"><b>01_pull_who_data.py</b> calls the WHO Global Health Observatory API and the World Bank API. Each call returns raw <b>JSON</b>.</div>
         <div class="evidence">
-          <div class="evidence-label">Example of what one API call returns</div>
+          <div class="evidence-label">The actual APIs we call</div>
+          <div class="code-line">WHO GHO: https://ghoapi.azureedge.net/api/{indicator_code}</div>
+          <div class="code-line" style="margin-top:4px;">World Bank: https://api.worldbank.org/v2/country/all/indicator/{code}</div>
+          <div class="evidence-label" style="margin-top:10px;">Example of what one call returns</div>
           <div class="code-line">{"country":"IND","year":"2019","value":9.57,"indicator":"MH_12"}</div>
         </div>
       </div>
@@ -658,7 +663,8 @@ function renderSliders() {
       <div class="unit">per 100,000 people</div>
       <div class="gauge-track"><div class="gauge-marker" id="gaugeMarker" style="left:0%"></div></div>
       <div class="gauge-labels"><span>Lowest seen worldwide</span><span>Highest seen worldwide</span></div>
-    </div>`;
+    </div>
+    <div class="callout" style="margin-top:18px;"><strong>Why do some sliders push the number up when you'd expect down?</strong> Each red tag above (<span style="color:var(--danger);font-weight:700;">↑ raises rate</span>) is a real, statistically significant result from the data — not a bug. Countries often build psychiatric infrastructure <em>after</em> a suicide crisis, not before it (reverse causality), and countries with more psychiatrists tend to be wealthier with far better death-reporting (confounding). With only 5 factors, the model can't fully separate "this factor helps" from "this factor just travels with other things that raise the rate."</div>`;
   let current = predict(values);
   document.getElementById("predictValue").textContent = current.toFixed(1);
   function gaugePct(v) { return Math.max(0, Math.min(100, ((v - SUICIDE_MIN) / (SUICIDE_MAX - SUICIDE_MIN)) * 100)); }
