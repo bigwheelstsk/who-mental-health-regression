@@ -778,6 +778,35 @@ function renderMath() {
       <div class="fx" style="font-size:13px;padding-top:4px;">$$\\hat{\\beta} = (X^{\\top}X)^{-1}X^{\\top}y \\qquad \\text{minimizes} \\;\\; \\sum_{i=1}^{n} (y_i - \\hat{y}_i)^2$$</div>
     </div>
 
+    <h3 style="font-size:13.5px;color:var(--ink-secondary);font-weight:600;margin:0 0 6px;">How that formula actually produces this line, step by step</h3>
+    <div class="flow" style="margin-bottom:22px;">
+      <div class="flow-step" style="animation-delay:.02s">
+        <div class="flow-num">1</div>
+        <div class="flow-title">Turn every row into one equation</div>
+        <div class="flow-body">Each of the ${MODEL.nObservations} cleaned rows becomes: <i>actual suicide_rate = β₀+β₁X₁+...+β₅X₅+error</i>. That's ${MODEL.nObservations} equations, only 6 unknowns (β₀...β₅).</div>
+      </div>
+      <div class="flow-step" style="animation-delay:.12s">
+        <div class="flow-num">2</div>
+        <div class="flow-title">Stack them into matrices</div>
+        <div class="flow-body">X = a ${MODEL.nObservations}×6 table (a column of 1's for the intercept, then the 5 factors). y = the ${MODEL.nObservations} real suicide rates, as one column.</div>
+      </div>
+      <div class="flow-step" style="animation-delay:.22s">
+        <div class="flow-num">3</div>
+        <div class="flow-title">Compute XᵀX and Xᵀy</div>
+        <div class="flow-body">XᵀX is a small 6×6 matrix summarizing how the 5 factors move together across every row; Xᵀy summarizes how each factor tracks with the real suicide rate.</div>
+      </div>
+      <div class="flow-step" style="animation-delay:.32s">
+        <div class="flow-num">4</div>
+        <div class="flow-title">Invert and multiply</div>
+        <div class="flow-body">(XᵀX)⁻¹ × Xᵀy — one matrix multiplication. statsmodels does this in a fraction of a second; it's exact linear algebra, not trial-and-error.</div>
+      </div>
+      <div class="flow-step" style="animation-delay:.42s">
+        <div class="flow-num">5</div>
+        <div class="flow-title">Out comes β̂</div>
+        <div class="flow-body">Six numbers pop out: β₀ = <b>${MODEL.intercept.toFixed(3)}</b> and β₁...β₅ above — the <em>one</em> line that minimizes total squared error across all ${MODEL.nObservations} points at once.</div>
+      </div>
+    </div>
+
     <div class="glos-card">
       <div class="glos-icon">🧮</div>
       <div><div class="glos-title">Why regression fits this problem</div>
