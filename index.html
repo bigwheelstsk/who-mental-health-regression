@@ -579,11 +579,32 @@ function drawMiniScatter(containerId, key) {
   return r;
 }
 
+function correlationEvidence() {
+  const need = ["psychiatrists_per_100k", "mh_units_gen_hospitals", "govt_mh_expenditure_pct", "govt_health_exp_pct_gdp"];
+  if (!need.every(k => PREDICTORS.includes(k))) return null;
+  const col = k => COUNTRY_DATA.map(d => d[k]);
+  return {
+    rPsych: pearsonR(col("psychiatrists_per_100k"), col("suicide_rate")),
+    rUnits: pearsonR(col("mh_units_gen_hospitals"), col("suicide_rate")),
+    rSpend: pearsonR(col("govt_mh_expenditure_pct"), col("suicide_rate")),
+    rSpendPsych: pearsonR(col("govt_mh_expenditure_pct"), col("psychiatrists_per_100k")),
+    rSpendHealth: pearsonR(col("govt_mh_expenditure_pct"), col("govt_health_exp_pct_gdp")),
+  };
+}
+function fmtR(x) { return (x >= 0 ? "+" : "") + x.toFixed(2); }
+
 function renderOverview() {
   const stdBeta = k => MODEL.coefficients[k] * (stdDev(COUNTRY_DATA.map(d=>d[k])) / stdDev(COUNTRY_DATA.map(d=>d.suicide_rate)));
   const rows = PREDICTORS.map(k => ({ key: k, betaStd: stdBeta(k), p: MODEL.pValues[k] })).sort((a,b) => Math.abs(b.betaStd) - Math.abs(a.betaStd));
   const strongest = rows[0];
   const dir = strongest.betaStd < 0 ? `<span class="arrow-lower">lower</span> ↓` : `<span class="arrow-higher">higher</span> ↑`;
+  const ev = correlationEvidence();
+  const wrongWayCallouts = ev ? `
+    <div class="callout" style="margin-top:22px;"><strong>Notice a bar pointing the "wrong" way?</strong> Psychiatrists (r = ${fmtR(ev.rPsych)}) and hospital units (r = ${fmtR(ev.rUnits)}) are positively linked to suicide rate even in the <b>raw</b> data, before any modeling — so it's not a regression artifact. The likely reason is <b>composition, not causation</b>: the highest-psychiatrist countries here (e.g. Finland, Estonia, Slovenia, Japan) are wealthier nations with both stronger death-registration <em>and</em>, independently, higher recorded suicide rates. With only 5 factors, the model can't separate "care" from "which countries happen to have it."</div>
+    <div class="callout" style="margin-top:14px;"><strong>The more rigorous finding:</strong> govt. mental-health spending barely correlates with suicide rate alone (r = ${fmtR(ev.rSpend)}) — yet becomes a significant <em>negative</em> predictor once psychiatrists and health spending are held constant. That's a genuine <b>suppression effect</b>: spending is highly collinear with psychiatrist supply (r = ${fmtR(ev.rSpendPsych)}) and general health spending (r = ${fmtR(ev.rSpendHealth)}), so regression only reveals spending's own contribution after removing what it shares with the other two.</div>
+  ` : `
+    <div class="callout" style="margin-top:22px;"><strong>Notice a bar pointing the "wrong" way?</strong> Some factors here are strongly correlated with each other (collinear) — regression can only isolate each one's <em>independent</em> contribution, which can look counter-intuitive on its own.</div>
+  `;
 
   panelHTML(`
     <h2>Does mental health spending lower suicide rates?</h2>
@@ -602,10 +623,11 @@ function renderOverview() {
       <span><b>Red</b> = linked to higher rate</span>
       <span><b>Longer bar</b> = bigger effect</span>
     </div>
+    <p class="chart-caption">Bars show <b>standardized</b> effect size (comparable across units) — not the raw β from the equation on "The math" tab.</p>
 
     <div class="mini-grid" id="miniGrid" style="margin-top:24px;"></div>
 
-    <div class="callout" style="margin-top:22px;"><strong>Notice a bar pointing the "wrong" way?</strong> More psychiatrists or hospital units linking to a <em>higher</em> predicted rate isn't a bug — it's <b>reverse causality &amp; confounding</b>. Countries often build psychiatric infrastructure <em>in response to</em> an existing crisis, not before it; and countries with more psychiatrists tend to be wealthier, with far better death-reporting than lower-income countries. This model can't separate "care lowers suicide" from "richer countries have both more psychiatrists and better-recorded suicide statistics" with only 5 factors.</div>
+    ${wrongWayCallouts}
 
     <div class="callout" style="margin-top:14px;"><strong>Bottom line:</strong> ${strongest.p < 0.05 ? `${LABELS[strongest.key]} is the strongest, statistically significant lever we found` : "no single factor is statistically decisive here"} — but this is <em>association</em> from cross-country data, not proof of cause.</div>
   `);
@@ -655,6 +677,10 @@ function renderTryIt() {
 
 function renderSliders() {
   const values = defaultValues();
+  const ev = correlationEvidence();
+  const sliderCallout = ev
+    ? `<div class="callout" style="margin-top:18px;"><strong>Why do some sliders push the number up?</strong> Real result, not a bug. Psychiatrists &amp; hospital units are positively linked to suicide rate even in the <b>raw</b> data (r = ${fmtR(ev.rPsych)}, ${fmtR(ev.rUnits)}) — composition, not causation: countries with more of both tend to be wealthier <em>and</em> better at recording suicide deaths. Govt. mental-health spending is different: barely correlated alone (r = ${fmtR(ev.rSpend)}), but flips negative once psychiatrists and health spending are held constant — a genuine <b>suppression effect</b> from how collinear those three are. See "The math" tab for the numbers.</div>`
+    : `<div class="callout" style="margin-top:18px;"><strong>Why do some sliders push the number up?</strong> Real, statistically significant results — some factors here are collinear, so regression isolates each one's independent contribution, which can look counter-intuitive on its own.</div>`;
   document.getElementById("viewSliders").innerHTML = `
     ${PREDICTORS.map((k,i) => sliderRow(k, "p"+i, values[k])).join("")}
     <div class="readout" id="readout">
@@ -664,7 +690,7 @@ function renderSliders() {
       <div class="gauge-track"><div class="gauge-marker" id="gaugeMarker" style="left:0%"></div></div>
       <div class="gauge-labels"><span>Lowest seen worldwide</span><span>Highest seen worldwide</span></div>
     </div>
-    <div class="callout" style="margin-top:18px;"><strong>Why do some sliders push the number up when you'd expect down?</strong> Each red tag above (<span style="color:var(--danger);font-weight:700;">↑ raises rate</span>) is a real, statistically significant result from the data — not a bug. Countries often build psychiatric infrastructure <em>after</em> a suicide crisis, not before it (reverse causality), and countries with more psychiatrists tend to be wealthier with far better death-reporting (confounding). With only 5 factors, the model can't fully separate "this factor helps" from "this factor just travels with other things that raise the rate."</div>`;
+    ${sliderCallout}`;
   let current = predict(values);
   document.getElementById("predictValue").textContent = current.toFixed(1);
   function gaugePct(v) { return Math.max(0, Math.min(100, ((v - SUICIDE_MIN) / (SUICIDE_MAX - SUICIDE_MIN)) * 100)); }
