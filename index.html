@@ -758,6 +758,17 @@ function renderMath() {
     <div class="fx" style="font-size:14px;overflow-x:auto;">$$\\hat{y} = ${MODEL.intercept.toFixed(3)} \\; ${fittedTerms}$$</div>
     <p class="chart-caption" style="margin:-8px 0 18px;">This runs live behind every chart · R² = ${pct}% · n = ${MODEL.nObservations}</p>
 
+    <div class="evidence" style="margin-bottom:22px;">
+      <div class="evidence-label">What X₁ … X₅ are, and where every β came from</div>
+      <div style="font-size:12.5px; line-height:2;">
+        ${PREDICTORS.map((k,i) => {
+          const b = MODEL.coefficients[k];
+          return `<div><span style="color:var(--accent);font-weight:700;">X${i+1}</span> = ${LABELS[k]} &nbsp; <span style="color:var(--ink-faint);">(β${i+1} = ${b>=0?"+":""}${b.toFixed(3)})</span></div>`;
+        }).join("")}
+      </div>
+      <p style="margin-top:10px;font-size:12.5px;color:var(--ink-secondary);line-height:1.6;">β₀ (the intercept, <b>${MODEL.intercept.toFixed(3)}</b>) and every β above are found by <b>Ordinary Least Squares</b>: statsmodels solves for the exact values that minimize total squared prediction error, fit on all <b>${MODEL.nObservations}</b> cleaned country-year rows. Nothing here is guessed, hardcoded, or tuned by hand — refit the model on different data and these numbers change with it.</p>
+    </div>
+
     <div class="glos-card">
       <div class="glos-icon">🧮</div>
       <div><div class="glos-title">Why regression fits this problem</div>
