@@ -440,14 +440,14 @@ function renderPipeline() {
 
   panelHTML(`
     <h2>How this is actually built</h2>
-    <p class="desc">Every box below is checked live against the data actually loaded in this page right now — not a description, evidence.</p>
+    <p class="desc">Live evidence, not description.</p>
 
     <div class="flow">
 
       <div class="flow-step" style="animation-delay:.02s">
         <div class="flow-num">1</div>
         <div class="flow-title">Pulling data from APIs</div>
-        <div class="flow-body"><b>01_pull_who_data.py</b> calls the WHO Global Health Observatory API and the World Bank API. Each call returns raw <b>JSON</b>.</div>
+        <div class="flow-body"><b>01_pull_who_data.py</b> → WHO GHO + World Bank → raw <b>JSON</b>.</div>
         <div class="evidence">
           <div class="evidence-label">The actual APIs we call</div>
           <div class="code-line">WHO GHO: https://ghoapi.azureedge.net/api/{indicator_code}</div>
@@ -460,7 +460,7 @@ function renderPipeline() {
       <div class="flow-step" style="animation-delay:.14s">
         <div class="flow-num">2</div>
         <div class="flow-title">Turning that into one CSV</div>
-        <div class="flow-body">All 6 indicators get merged into one table, matched by country + year, saved as <b>who_mental_health_suicide_panel.csv</b>.</div>
+        <div class="flow-body">6 indicators → 1 table, matched by country+year → <b>who_mental_health_suicide_panel.csv</b>.</div>
         <div class="evidence">
           <div class="evidence-label"><span class="live-dot"></span>Live — first 5 rows actually loaded right now</div>
           ${liveTable}
@@ -470,7 +470,7 @@ function renderPipeline() {
       <div class="flow-step" style="animation-delay:.26s">
         <div class="flow-num">3</div>
         <div class="flow-title">Cleaning / formatting it</div>
-        <div class="flow-body">Missing values are forward/backward-filled within each country; rows still missing data are dropped.</div>
+        <div class="flow-body"><b>ffill/bfill</b> within each country; still-missing rows dropped.</div>
         <div class="evidence">
           <div class="evidence-label"><span class="live-dot"></span>Live — before vs. after cleaning</div>
           <div class="stat-row" style="margin-bottom:0;">
@@ -484,13 +484,13 @@ function renderPipeline() {
       <div class="flow-step" style="animation-delay:.38s">
         <div class="flow-num">4</div>
         <div class="flow-title">Fitting our own regression model</div>
-        <div class="flow-body">Not pre-trained — <b>app.py</b> fits a fresh Multiple Linear Regression (OLS, statsmodels) on this exact cleaned data, every server start.</div>
+        <div class="flow-body">Not pre-trained — <b>app.py</b> fits fresh OLS on this data, every server start.</div>
       </div>
 
       <div class="flow-step" style="animation-delay:.50s">
         <div class="flow-num">5</div>
         <div class="flow-title">What "the regression model" is</div>
-        <div class="flow-body">One equation: suicide rate = baseline + (weight × each factor). Here's ours, live:</div>
+        <div class="flow-body">rate = <b>baseline</b> + Σ(weight × factor). Live:</div>
         <div class="evidence">
           <div class="evidence-label"><span class="live-dot"></span>Live fitted equation</div>
           <div class="fx" style="padding:2px 0;font-size:12.5px;" id="pipelineEq"></div>
@@ -500,13 +500,13 @@ function renderPipeline() {
       <div class="flow-step" style="animation-delay:.62s">
         <div class="flow-num">6</div>
         <div class="flow-title">How it's processed end-to-end</div>
-        <div class="flow-body">Server starts → reads CSV → cleans → fits the model once → serves it as JSON (<b>/api/model</b>, <b>/api/data</b>). This page fetches that JSON and computes everything in your browser.</div>
+        <div class="flow-body">Server → CSV → clean → fit → JSON (<b>/api/model</b>, <b>/api/data</b>) → your browser computes the rest.</div>
       </div>
 
       <div class="flow-step" style="animation-delay:.74s">
         <div class="flow-num">7</div>
         <div class="flow-title">What "the prediction" is</div>
-        <div class="flow-body">The equation above, solved for real numbers. Worked example, computed live right now:</div>
+        <div class="flow-body">Equation, solved live. Worked example:</div>
         <div class="evidence">
           <div class="evidence-label"><span class="live-dot"></span>Live worked example — dataset averages</div>
           <div class="code-line" style="margin-bottom:8px;">${exampleLine}</div>
@@ -611,10 +611,18 @@ function renderOverview() {
   const vifRange = `${Math.min(...vifVals).toFixed(2)}–${Math.max(...vifVals).toFixed(2)}`;
 
   const wrongWayCallouts = ev ? `
-    <div class="callout" style="margin-top:22px;"><strong>Notice a bar pointing the "wrong" way?</strong> Psychiatrists (r = ${fmtR(ev.rPsych)}) and hospital units (r = ${fmtR(ev.rUnits)}) are positively linked to suicide rate even in the <b>raw</b> data, before any modeling — not a regression artifact. It's likely <b>composition, not causation</b>: the highest-psychiatrist countries here (e.g. New Zealand, Poland, Finland, Estonia, Japan) are wealthy, high-income nations with both stronger death-registration <em>and</em>, independently, higher recorded suicide rates — this isn't one specific region, just "wealthier countries" broadly. Only <b>psychiatrists'</b> link survives clustered testing (p=${fmtP(MODEL.pValuesClustered.psychiatrists_per_100k)}); hospital units' does not (p=${fmtP(MODEL.pValuesClustered.mh_units_gen_hospitals)}) — likely a weaker echo of the same pattern, not independently confirmed.</div>
-    <div class="callout" style="margin-top:14px;"><strong>The more rigorous finding:</strong> <em>both</em> spending variables barely correlate with suicide rate alone (govt. MH spend r=${fmtR(ev.rMhSpend)}, govt. health spend r=${fmtR(ev.rHealthSpend)}) — yet both flip to a <em>negative</em> predictor once psychiatrists is held constant. That's a genuine <b>suppression effect</b>: both are highly collinear with psychiatrist supply (r=${fmtR(ev.rMhSpendPsych)} and r=${fmtR(ev.rHealthSpendPsych)}). Multicollinearity here is moderate, not severe — VIFs run ${vifRange} across all 5 factors (concern typically starts above 5–10) — the model isn't breaking, it's isolating each factor's own contribution.</div>
+    <div class="glos-card">
+      <div class="glos-icon">🧩</div>
+      <div><div class="glos-title">Psychiatrists/units point "wrong way" → composition, not causation</div>
+      <div class="glos-body">Raw r: psychiatrists <b>${fmtR(ev.rPsych)}</b>, units <b>${fmtR(ev.rUnits)}</b> — real, not a modeling artifact. Wealthy countries (NZ, Poland, Finland, Estonia, Japan…) = more psychiatrists <em>and</em> better death-recording. Only <b>psychiatrists</b> survives clustering (p=${fmtP(MODEL.pValuesClustered.psychiatrists_per_100k)}); units doesn't (p=${fmtP(MODEL.pValuesClustered.mh_units_gen_hospitals)}).</div></div>
+    </div>
+    <div class="glos-card">
+      <div class="glos-icon">🔀</div>
+      <div><div class="glos-title">Spending flips sign → a suppression effect</div>
+      <div class="glos-body">Raw r ≈ 0 (MH spend <b>${fmtR(ev.rMhSpend)}</b>, health spend <b>${fmtR(ev.rHealthSpend)}</b>) → <b>negative</b> once psychiatrists held constant. Collinearity r ≈ ${fmtR(ev.rMhSpendPsych)}/${fmtR(ev.rHealthSpendPsych)} with psychiatrists. VIF <b>${vifRange}</b> — moderate, not severe.</div></div>
+    </div>
   ` : `
-    <div class="callout" style="margin-top:22px;"><strong>Notice a bar pointing the "wrong" way?</strong> Some factors here are strongly correlated with each other (collinear) — regression can only isolate each one's <em>independent</em> contribution, which can look counter-intuitive on its own.</div>
+    <div class="callout" style="margin-top:22px;"><strong>Notice a bar pointing the "wrong" way?</strong> Collinear factors — regression isolates each one's <em>independent</em> effect, which can look counter-intuitive alone.</div>
   `;
 
   const anySigClustered = PREDICTORS.some(k => MODEL.pValuesClustered[k] < 0.05);
@@ -636,7 +644,7 @@ function renderOverview() {
 
   panelHTML(`
     <h2>Does mental health spending lower suicide rates?</h2>
-    <p class="desc">Suicide rate and each factor are continuous numbers, not categories — so we used <b>multiple regression</b> to quantify all ${PREDICTORS.length} at once, instead of guessing from one factor at a time.</p>
+    <p class="desc"><b>Multiple linear regression</b> — ${PREDICTORS.length} continuous factors, one equation, fit together.</p>
     <div class="stat-row">
       <div class="stat-tile"><div class="n">700,000+</div><div class="l">suicides/year worldwide (WHO)</div></div>
       <div class="stat-tile"><div class="n">${MODEL.nObservations}</div><div class="l">country-year rows</div></div>
@@ -658,11 +666,11 @@ function renderOverview() {
 
     ${wrongWayCallouts}
 
-    <h3 style="font-size:14px;color:var(--ink-secondary);font-weight:600;margin:26px 0 10px;">Robustness check — do these p-values actually hold up?</h3>
-    <div class="callout" style="margin-top:0;"><strong>Short answer: mostly no.</strong> These ${MODEL.nObservations} rows aren't independent — they're ${MODEL.nCountries} countries observed repeatedly, and a country's suicide rate barely moves year to year (Durbin-Watson = ${MODEL.durbinWatson.toFixed(3)}, near 0 = severe autocorrelation). Naive p-values treat every row as independent evidence and overstate significance. Clustering standard errors by country — the standard fix — shows the real effective sample size is closer to <b>${MODEL.nCountries} countries</b> than ${MODEL.nObservations} rows.</div>
+    <h3 style="font-size:14px;color:var(--ink-secondary);font-weight:600;margin:26px 0 10px;">Robustness check — do these p-values hold up?</h3>
+    <div class="callout" style="margin-top:0;"><b>DW = ${MODEL.durbinWatson.toFixed(3)}</b> (≈0 → autocorrelated) → naive p overstates significance. Clustered by country: real n ≈ <b>${MODEL.nCountries} countries</b>, not ${MODEL.nObservations} rows.</div>
     ${robustCards}
 
-    <div class="callout" style="margin-top:22px;"><strong>Bottom line:</strong> ${anySigClustered ? `${LABELS[sigKey]} is the only factor that survives rigorous (clustered) testing at p&lt;0.05` : "no factor is statistically decisive once we account for repeated country observations"} — and even that is <em>association</em> from cross-country data, not proof of cause.</div>
+    <div class="callout" style="margin-top:22px;"><strong>Bottom line:</strong> ${anySigClustered ? `only <b>${LABELS[sigKey]}</b> survives clustering (p&lt;0.05)` : "no factor survives clustering"} — association, not causation.</div>
   `);
 
   drawCoefChart("coefChart", true);
@@ -712,8 +720,8 @@ function renderSliders() {
   const values = defaultValues();
   const ev = correlationEvidence();
   const sliderCallout = ev
-    ? `<div class="callout" style="margin-top:18px;"><strong>Why do some sliders push the number up?</strong> Psychiatrists &amp; hospital units are positively linked to suicide rate even in the <b>raw</b> data (r = ${fmtR(ev.rPsych)}, ${fmtR(ev.rUnits)}) — composition, not causation: countries with more of both tend to be wealthier and better at recording suicide deaths. Both spending variables are the opposite: barely correlated alone, but flip negative once psychiatrists is held constant — a genuine <b>suppression effect</b> from collinearity, not noise. But only <b>psychiatrists' own effect survives</b> rigorous testing once we account for repeated country observations (clustered p=${fmtP(MODEL.pValuesClustered.psychiatrists_per_100k)}) — see "Overview → Robustness check" for the rest.</div>`
-    : `<div class="callout" style="margin-top:18px;"><strong>Why do some sliders push the number up?</strong> Real, statistically significant results — some factors here are collinear, so regression isolates each one's independent contribution, which can look counter-intuitive on its own.</div>`;
+    ? `<div class="callout" style="margin-top:18px;"><b>Why up, not down?</b> Psychiatrists/units: real (r=${fmtR(ev.rPsych)}, ${fmtR(ev.rUnits)}) — composition, not causation. Spending: <b>suppression effect</b> (flips sign once controlled). Only <b>psychiatrists</b> survives clustering (p=${fmtP(MODEL.pValuesClustered.psychiatrists_per_100k)}) — see Overview → Robustness check.</div>`
+    : `<div class="callout" style="margin-top:18px;"><strong>Why do some sliders push the number up?</strong> Collinear factors — regression isolates each one's independent effect, which can look counter-intuitive alone.</div>`;
   document.getElementById("viewSliders").innerHTML = `
     ${PREDICTORS.map((k,i) => sliderRow(k, "p"+i, values[k])).join("")}
     <div class="readout" id="readout">
@@ -834,83 +842,82 @@ function renderMath() {
           return `<div><span style="color:var(--accent);font-weight:700;">X${i+1}</span> = ${LABELS[k]} &nbsp; <span style="color:var(--ink-faint);">(β${i+1} = ${b>=0?"+":""}${b.toFixed(3)})</span></div>`;
         }).join("")}
       </div>
-      <p style="margin-top:10px;font-size:12.5px;color:var(--ink-secondary);line-height:1.6;">β₀ (the intercept, <b>${MODEL.intercept.toFixed(3)}</b>) and every β above are found by <b>Ordinary Least Squares</b>: statsmodels solves for the exact values that minimize total squared prediction error, fit on all <b>${MODEL.nObservations}</b> cleaned country-year rows. Nothing here is guessed, hardcoded, or tuned by hand — refit the model on different data and these numbers change with it.</p>
+      <p style="margin-top:10px;font-size:12.5px;color:var(--ink-secondary);line-height:1.6;">β₀ = intercept (<b>${MODEL.intercept.toFixed(3)}</b>, the baseline). Every β = <b>Ordinary Least Squares</b>: minimizes squared error over <b>${MODEL.nObservations}</b> rows. Nothing hardcoded — refit on new data, numbers change.</p>
       <div class="fx" style="font-size:13px;padding-top:4px;">$$\\hat{\\beta} = (X^{\\top}X)^{-1}X^{\\top}y \\qquad \\text{minimizes} \\;\\; \\sum_{i=1}^{n} (y_i - \\hat{y}_i)^2$$</div>
     </div>
 
     <div class="evidence" style="margin-bottom:22px;">
-      <div class="evidence-label">Is "p &lt; 0.05" trustworthy here? Check the panel-data assumptions</div>
-      <p style="font-size:12.5px;color:var(--ink-secondary);line-height:1.6;margin:0 0 8px;">This is panel data — ${MODEL.nCountries} countries, each observed multiple times. Plain OLS assumes every row is independent, which repeated same-country rows aren't.</p>
+      <div class="evidence-label">Is "p &lt; 0.05" trustworthy? Panel-data check</div>
       <div style="font-size:12.5px; line-height:1.9;">
-        <div><b>Durbin-Watson</b> = ${MODEL.durbinWatson.toFixed(3)} <span style="color:var(--ink-faint);">(0-4 scale; near 0 = severe positive autocorrelation, as expected here)</span></div>
-        <div><b>VIF range</b> = ${Math.min(...Object.values(MODEL.vif)).toFixed(2)}–${Math.max(...Object.values(MODEL.vif)).toFixed(2)} <span style="color:var(--ink-faint);">(moderate collinearity; concern typically starts above 5-10)</span></div>
+        <div><b>Durbin-Watson</b> = ${MODEL.durbinWatson.toFixed(3)} <span style="color:var(--ink-faint);">(≈0 = severe autocorrelation, ${MODEL.nCountries} countries repeated)</span></div>
+        <div><b>VIF range</b> = ${Math.min(...Object.values(MODEL.vif)).toFixed(2)}–${Math.max(...Object.values(MODEL.vif)).toFixed(2)} <span style="color:var(--ink-faint);">(moderate; concern starts above 5-10)</span></div>
       </div>
-      <p style="font-size:12.5px;color:var(--ink-secondary);line-height:1.6;margin:8px 0 0;">Fix: refit with <b>cluster-robust standard errors</b>, grouped by country. That's what "p (clustered)" means everywhere on this site — treat it, not the naive p, as the real significance test. See Overview → "Robustness check" for the full comparison.</p>
+      <p style="font-size:12.5px;color:var(--ink-secondary);line-height:1.6;margin:8px 0 0;"><b>Fix:</b> cluster-robust SEs by country → "p (clustered)" everywhere on this site. Treat that, not naive p, as real. Full table: Overview → Robustness check.</p>
     </div>
 
     <h3 style="font-size:13.5px;color:var(--ink-secondary);font-weight:600;margin:0 0 6px;">How that formula actually produces this line, step by step</h3>
     <div class="flow" style="margin-bottom:22px;">
       <div class="flow-step" style="animation-delay:.02s">
         <div class="flow-num">1</div>
-        <div class="flow-title">Turn every row into one equation</div>
-        <div class="flow-body">Each of the ${MODEL.nObservations} cleaned rows becomes: <i>actual suicide_rate = β₀+β₁X₁+...+β₅X₅+error</i>. That's ${MODEL.nObservations} equations, only 6 unknowns (β₀...β₅).</div>
+        <div class="flow-title">Row → equation</div>
+        <div class="flow-body">Each of ${MODEL.nObservations} rows: <i>suicide_rate = β₀+β₁X₁+...+β₅X₅+error</i>. ${MODEL.nObservations} equations, 6 unknowns.</div>
       </div>
       <div class="flow-step" style="animation-delay:.12s">
         <div class="flow-num">2</div>
-        <div class="flow-title">Stack them into matrices</div>
-        <div class="flow-body">X = a ${MODEL.nObservations}×6 table (a column of 1's for the intercept, then the 5 factors). y = the ${MODEL.nObservations} real suicide rates, as one column.</div>
+        <div class="flow-title">Stack into matrices</div>
+        <div class="flow-body">X = ${MODEL.nObservations}×6 (const + 5 factors). y = ${MODEL.nObservations} real suicide rates.</div>
       </div>
       <div class="flow-step" style="animation-delay:.22s">
         <div class="flow-num">3</div>
-        <div class="flow-title">Compute XᵀX and Xᵀy</div>
-        <div class="flow-body">XᵀX is a small 6×6 matrix summarizing how the 5 factors move together across every row; Xᵀy summarizes how each factor tracks with the real suicide rate.</div>
+        <div class="flow-title">Compute XᵀX, Xᵀy</div>
+        <div class="flow-body">XᵀX: how factors move together. Xᵀy: how each tracks with the real rate.</div>
       </div>
       <div class="flow-step" style="animation-delay:.32s">
         <div class="flow-num">4</div>
-        <div class="flow-title">Invert and multiply</div>
-        <div class="flow-body">(XᵀX)⁻¹ × Xᵀy — one matrix multiplication. statsmodels does this in a fraction of a second; it's exact linear algebra, not trial-and-error.</div>
+        <div class="flow-title">Invert × multiply</div>
+        <div class="flow-body">(XᵀX)⁻¹ × Xᵀy — one matrix multiply. Exact linear algebra, not trial-and-error.</div>
       </div>
       <div class="flow-step" style="animation-delay:.42s">
         <div class="flow-num">5</div>
         <div class="flow-title">Out comes β̂</div>
-        <div class="flow-body">Six numbers pop out: β₀ = <b>${MODEL.intercept.toFixed(3)}</b> and β₁...β₅ above — the <em>one</em> line that minimizes total squared error across all ${MODEL.nObservations} points at once.</div>
+        <div class="flow-body">β₀ = <b>${MODEL.intercept.toFixed(3)}</b> + β₁...β₅ — the <em>one</em> line minimizing squared error over all ${MODEL.nObservations} points.</div>
       </div>
     </div>
 
     <div class="glos-card">
       <div class="glos-icon">🧮</div>
-      <div><div class="glos-title">Why regression fits this problem</div>
-      <div class="glos-body">Suicide rate is a <b>continuous number</b> (not a category), driven by <b>continuous factors</b> — spending %, headcounts, litres. Regression is built exactly for "how does a continuous outcome move with continuous inputs," so it's the natural fit here.</div></div>
+      <div><div class="glos-title">Why regression</div>
+      <div class="glos-body"><b>Continuous outcome</b>, <b>continuous factors</b> — exactly what regression is built for.</div></div>
     </div>
     <div class="glos-card">
       <div class="glos-icon">🔗</div>
-      <div><div class="glos-title">Multiple linear regression — why we use it</div>
-      <div class="glos-body">One equation, all ${PREDICTORS.length} factors together, each holding the others fixed. <b>This is the model</b> generating every prediction on this page.</div></div>
+      <div><div class="glos-title">Why multiple</div>
+      <div class="glos-body">All ${PREDICTORS.length} factors, one equation, each holding the others fixed. <b>This runs every prediction here.</b></div></div>
     </div>
     <div class="glos-card">
       <div class="glos-icon">⚖️</div>
-      <div><div class="glos-title">Why not simple regression</div>
-      <div class="glos-body">Simple regression uses one factor at a time — but our factors move together (more spending often means more psychiatrists too), so it would wrongly credit one factor for another's effect.</div></div>
+      <div><div class="glos-title">Why not simple</div>
+      <div class="glos-body">One-at-a-time would wrongly credit one factor for another's effect — our factors move together.</div></div>
     </div>
     <div class="glos-card">
       <div class="glos-icon">📈</div>
       <div><div class="glos-title">Correlation (r)</div>
-      <div class="glos-body">$$r = \\frac{\\sum (x_i-\\bar{x})(y_i-\\bar{y})}{\\sqrt{\\sum (x_i-\\bar{x})^2 \\sum (y_i-\\bar{y})^2}}$$ −1 to +1: how strongly one factor, alone, tracks with suicide rate. Shown as "r =" under each Overview chart.</div></div>
+      <div class="glos-body">$$r = \\frac{\\sum (x_i-\\bar{x})(y_i-\\bar{y})}{\\sqrt{\\sum (x_i-\\bar{x})^2 \\sum (y_i-\\bar{y})^2}}$$ −1 to +1. Shown as "r =" on every Overview chart.</div></div>
     </div>
     <div class="glos-card">
       <div class="glos-icon">🎯</div>
-      <div><div class="glos-title">p-value & the 5% threshold</div>
-      <div class="glos-body">The chance a coefficient is pure noise. <b>p &lt; 0.05</b> is the standard cutoff — but with panel data, use the <b>clustered</b> p-value (above), not the naive one, or you'll overstate what's real.</div></div>
+      <div><div class="glos-title">p-value, 5% threshold</div>
+      <div class="glos-body">Chance a coefficient is noise. <b>p &lt; 0.05</b> = real — use <b>clustered</b> p (above), not naive.</div></div>
     </div>
     <div class="glos-card">
       <div class="glos-icon">📊</div>
-      <div><div class="glos-title">R² — how much is "good"</div>
-      <div class="glos-body">% of the pattern the model explains. Ours: <b>${pct}%</b>. For cross-country social data, 10–30% is normal and useful — 100% never happens, since culture, genetics, and other unmeasured causes fill the rest.</div></div>
+      <div><div class="glos-title">R² — "good enough"?</div>
+      <div class="glos-body">% of pattern explained. Ours: <b>${pct}%</b>. 10–30% is normal for cross-country social data.</div></div>
     </div>
     <div class="glos-card">
       <div class="glos-icon">🔮</div>
-      <div><div class="glos-title">What "prediction" means here</div>
-      <div class="glos-body">One continuous number, not yes/no — the equation solved for whatever values you set. No accept/reject cutoff on a single prediction; R² and p-values judge the <em>model</em>, not each number.</div></div>
+      <div><div class="glos-title">What "prediction" is</div>
+      <div class="glos-body">One continuous number — the equation solved live. No accept/reject cutoff per number; R²/p judge the <em>model</em>.</div></div>
     </div>
   `);
   renderMathInElement(document.getElementById("panelHost"), { delimiters: [{left: "$$", right: "$$", display: true}] });
